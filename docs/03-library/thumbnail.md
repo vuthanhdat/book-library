@@ -1,0 +1,65 @@
+# Purpose
+
+Define thumbnail generation, caching, invalidation, and retrieval for discovered books.
+
+# Background
+
+Thumbnails make browsing pleasant but are derived artifacts. They must never be treated as source content. PDF thumbnails should come from the first meaningful page through PDFium. Image-folder thumbnails should come from the first readable page image.
+
+# Requirements
+
+- Generate thumbnails asynchronously after discovery.
+- Cache thumbnails using relative or app-data-safe references.
+- Do not modify original book files.
+- Invalidate thumbnails when source fingerprints change.
+- Support failure state without breaking book browsing.
+- Prefer deterministic sizes and formats for UI performance.
+- Allow regeneration on demand.
+
+# Responsibilities
+
+- Produce visual previews for catalog browsing.
+- Avoid blocking scanning and reader workflows.
+- Track generation status and errors.
+- Keep cache cleanup possible.
+
+# Architecture
+
+Thumbnail generation should run as a background job. The application layer selects books needing thumbnails. Infrastructure adapters render or load the first page, resize it, write a cache file, and persist the thumbnail record. UI reads thumbnail status through catalog queries.
+
+# Mermaid Diagram
+
+```mermaid
+flowchart TD
+    Book["Book discovered or changed"] --> Job["Thumbnail job queued"]
+    Job --> Kind{"Book kind"}
+    Kind -->|PDF| RenderPDF["Render first page with PDFium"]
+    Kind -->|Image folder| LoadImage["Load first image page"]
+    RenderPDF --> Resize["Resize and encode"]
+    LoadImage --> Resize
+    Resize --> Cache["Write thumbnail cache"]
+    Cache --> DB["Persist thumbnail record"]
+    Job -->|error| Issue["Record retryable failure"]
+```
+
+# Data Model
+
+Thumbnail tables:
+
+- `thumbnails(id, book_id, cache_relative_path, width, height, format, source_fingerprint, status, error_message, generated_at)`
+- `thumbnail_jobs(id, book_id, status, attempt_count, priority, last_error, created_at, updated_at)`
+
+If cache files are stored outside the library root in app data, `cache_relative_path` should be relative to the app cache root, not an absolute OS path.
+
+# Future Extension
+
+- Multiple thumbnail sizes for list, grid, and detail views.
+- User-selected cover image.
+- PDF page selection for cover.
+- Perceptual placeholder colors generated from cover thumbnails.
+
+# Open Questions
+
+- Should thumbnails be stored in app cache or in a `.book-library` folder inside the library root?
+- Should failed thumbnail jobs retry automatically or only on rescan?
+- Should animated image formats use the first frame only?
