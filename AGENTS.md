@@ -1,373 +1,173 @@
-# AGENTS.md
+# Engineering Rules for AI Agents
 
-# Book Library
+These rules are mandatory for every coding agent and contributor working in this repository.
 
-This document defines the engineering rules for every AI coding agent working on this repository.
+## Repository status
 
-The goal is to ensure all implementations remain consistent with the project architecture, regardless of which AI model or human contributor writes the code.
+The repository is currently in the engineering-foundation phase. Do not describe a feature as implemented unless the corresponding source, tests, and configuration exist in the branch being reviewed.
 
----
+Before changing code, read:
 
-# 1. Mission
+1. [documentation authority and map](docs/README.md);
+2. the relevant product or module specification;
+3. [accepted ADRs](docs/adr/README.md);
+4. the active milestone and sprint documents.
 
-Book Library is a desktop-first, offline-first personal knowledge platform.
+When documents disagree, follow the authority order in `docs/README.md`.
 
-It is **NOT**
+## Product invariants
 
-- a cloud service
-- a web application
-- an online ebook platform
-- a database-centric system
+- Desktop first: Windows 11 is the first supported platform.
+- Offline first: core library, reader, notes, and search workflows require no Internet access.
+- Filesystem first: source books remain in user-owned folders.
+- Markdown first: user-authored note text remains in `.md` files.
+- Relative paths only: content references are persisted relative to a configured root.
+- AI optional: disabling every AI/provider module must not break core workflows.
+- Non-destructive: never rename, move, delete, or rewrite source books automatically.
 
-It **IS**
+## Architecture
 
-- a local application
-- a filesystem-centric application
-- a reader
-- a knowledge management tool
+The initial application is a Rust modular monolith with React presentation.
 
----
+```text
+React presentation
+    -> Tauri desktop boundary
+        -> application use cases and ports
+            -> domain rules
 
-# 2. Core Principles
+infrastructure adapters
+    -> implement application/domain ports
+```
 
-These principles are mandatory.
+Compile-time dependencies point inward:
 
-## Filesystem First
+- `domain` imports no Tauri, SQLite, filesystem, PDFium, React, or provider code;
+- `application` depends on domain and owns use cases, transactions, jobs, and ports;
+- `infrastructure` implements ports and may depend on application/domain contracts;
+- `desktop` composes adapters and exposes thin Tauri commands/events;
+- React owns screens and view state, not authoritative business rules.
 
-The filesystem is the source of truth.
+Call flow is not dependency direction. A use case may call an infrastructure port, but the adapter depends on the port contract—not the reverse.
 
-Books are never copied into SQLite.
+Expected initial Rust layout:
 
-SQLite only stores metadata and indexes.
+```text
+src-tauri/src/
+  domain/
+  application/
+  infrastructure/
+  desktop/
+```
 
----
+Use narrow visibility by default. Do not create a generic `utils` module for unrelated helpers. Do not import another feature's private repository or adapter.
 
-## Offline First
+## Layer responsibilities
 
-Everything required for daily usage must work without Internet.
+### Presentation
 
-Internet is optional.
+May contain components, routing, view models, transient UI state, formatting, and client-side interaction validation.
 
-AI is optional.
+Must not access SQLite, inspect source folders directly, or implement catalog/reader/note business rules.
 
----
+### Desktop boundary
 
-## Relative Path Only
+May deserialize payloads, perform boundary validation, map errors, call use cases, and emit typed events.
 
-Persist only relative paths.
+Must not contain SQL, filesystem traversal, or business decisions.
 
-Never store absolute paths inside SQLite.
+### Application
 
-Absolute paths are reconstructed at runtime.
+Owns use cases, orchestration, transaction boundaries, cancellation, job coordination, and infrastructure ports.
 
----
+Must not contain React or Tauri UI concerns, raw SQL, or provider-specific SDK behavior.
 
-## Markdown First
+### Domain
 
-Notes are Markdown files.
+Owns entities, value objects, invariants, policies, and domain errors.
 
-SQLite stores only projections.
+Must remain deterministic and infrastructure-independent.
 
-Markdown remains the canonical source.
+### Infrastructure
 
----
+Owns SQLite repositories, migrations, filesystem scanning/watching, PDFium, Markdown I/O, FTS5, thumbnails, OCR, and provider adapters.
 
-## AI Optional
+Must not invent business policy that belongs in domain or application.
 
-The application must remain fully usable without AI.
+## Data and filesystem safety
 
-No workflow may depend on an external AI service.
+SQLite may store metadata, settings, relationships, reading state, jobs, and rebuildable indexes. It must not be the canonical store for PDFs, page images, or Markdown note bodies.
 
----
+The database, cache, thumbnails, and logs live in OS application data. Source folders must not receive hidden application infrastructure. See `ADR-005`.
 
-# 3. Architecture
+Persisted content paths must:
 
-Always follow this dependency direction.
+- use `/` as the normalized separator;
+- contain no drive letter or UNC root;
+- contain no leading root separator;
+- reject `..` traversal outside the configured root;
+- preserve valid Unicode names.
 
-Presentation
+An absolute library or notes root is machine-local configuration. It is not a book/note identity and must not leak into persisted content references.
 
-↓
+## Use cases, events, and jobs
 
-Tauri Commands
+Every user operation enters through an application use case. Prefer explicit names such as:
 
-↓
+- `InitializeLibrary`
+- `RescanLibrary`
+- `OpenBook`
+- `SaveReadingProgress`
+- `CreateBookNote`
+- `SearchLibrary`
 
-Application Use Cases
+Long-running operations such as scans, thumbnails, indexing, and OCR must report progress and isolate per-item failures. Add cancellation and restart recovery according to the active milestone's acceptance criteria.
 
-↓
+Events communicate facts and progress; they do not replace use-case calls or transactions. Use stable, past-tense names and typed payloads.
 
-Domain
+## Error handling and logging
 
-↓
+- Return typed domain/application errors.
+- Map errors to stable user-safe codes at the desktop boundary.
+- Prefer recover, retry, skip-one-item, or continue over crashing the app.
+- Never silently swallow errors.
+- Never log note bodies, extracted book text, API keys, or secrets.
+- Avoid logging full absolute user paths unless diagnostics explicitly require and redact them.
 
-Infrastructure
+## Testing requirements
 
-Dependencies only point downward.
+Add the smallest effective test at the owning layer:
 
-Never reverse dependencies.
+- domain unit tests for invariants and policies;
+- application tests with fake ports for orchestration;
+- infrastructure integration tests with temporary folders/databases;
+- contract tests for Tauri payloads and error mapping;
+- frontend tests for meaningful interaction behavior.
 
----
+Critical rules such as path normalization, natural image ordering, idempotent discovery, non-destructive scanning, migrations, and progress restoration require tests.
 
-# 4. Layer Responsibilities
+## Documentation rules
 
-## Presentation
+Documentation is part of the change, but do not duplicate rules across files.
 
-Responsible for
+- new/reversed technical choice → ADR;
+- product behavior/scope change → requirements and feature catalog;
+- module ownership/dependency change → architecture documents;
+- persistence change → migration/schema and recovery notes;
+- delivery-scope change → plan, backlog, or active sprint;
+- completed feature → update feature status only after tests pass.
 
-- UI
-- user interaction
-- view models
-- routing
+Remove stale claims and unresolved alternatives when an ADR settles them. Never mark planned work as completed based only on a design document.
 
-Never
+## Before committing
 
-- query SQLite
-- access filesystem
-- contain business rules
+Verify:
 
----
+- the change belongs to the active scope;
+- no accepted ADR is violated;
+- no duplicate use case, repository, path logic, or UI implementation was introduced;
+- user-owned files remain safe;
+- tests cover critical behavior;
+- documentation reflects the actual branch;
+- generated/debug files and secrets are not included.
 
-## Application
-
-Responsible for
-
-- use cases
-- orchestration
-- transactions
-
-Never
-
-- contain UI logic
-- contain SQL
-
----
-
-## Domain
-
-Responsible for
-
-- entities
-- value objects
-- business rules
-
-Never
-
-- reference Tauri
-- reference SQLite
-- reference React
-
----
-
-## Infrastructure
-
-Responsible for
-
-- SQLite
-- Filesystem
-- PDFium
-- OCR
-- AI
-- Markdown
-
-Never
-
-- contain business rules
-
----
-
-# 5. Module Boundaries
-
-Current modules
-
-- Library
-- Reader
-- Notes
-- Search
-- AI
-- Settings
-
-Modules communicate through interfaces.
-
-Never import another module's internal implementation.
-
----
-
-# 6. Database Rules
-
-SQLite stores
-
-- metadata
-- settings
-- jobs
-- indexes
-- reading state
-
-SQLite never stores
-
-- PDFs
-- images
-- Markdown note contents
-
----
-
-# 7. File Rules
-
-Never modify user files automatically.
-
-Allowed
-
-- create Markdown notes
-- create thumbnails
-- create cache
-
-Forbidden
-
-- rename books
-- move books
-- rewrite PDFs
-- rewrite image folders
-
-unless explicitly requested by the user.
-
----
-
-# 8. Background Jobs
-
-Long-running work must execute as background jobs.
-
-Examples
-
-- library scan
-- thumbnail generation
-- OCR
-- search indexing
-
-Jobs must
-
-- report progress
-- support cancellation
-- survive application restart
-
----
-
-# 9. Event Driven
-
-Modules communicate using events.
-
-Typical events
-
-- LibraryInitialized
-- ScanStarted
-- ScanCompleted
-- BookAdded
-- BookUpdated
-- BookRemoved
-- ReadingProgressChanged
-- NoteUpdated
-
-Avoid direct module coupling whenever possible.
-
----
-
-# 10. Error Handling
-
-Errors must be recoverable.
-
-Prefer
-
-Recover → Retry → Continue
-
-instead of
-
-Crash → Exit
-
-User data is more important than strict correctness.
-
----
-
-# 11. Coding Rules
-
-Prefer
-
-Small functions.
-
-Composable modules.
-
-Explicit types.
-
-Immutable data where practical.
-
-Avoid
-
-God objects.
-
-Massive services.
-
-Hidden global state.
-
-Duplicate logic.
-
----
-
-# 12. Naming
-
-Use consistent names.
-
-Examples
-
-InitializeLibraryUseCase
-
-BookRepository
-
-ThumbnailGenerator
-
-ReadingStateRepository
-
-SearchIndexer
-
-RelativePath
-
-BookKind
-
-ReadingLocation
-
----
-
-# 13. Documentation
-
-Every new feature must update
-
-- Architecture (if needed)
-- Database (if changed)
-- API contract
-- Planning
-- Feature specification
-
-Documentation is part of the implementation.
-
----
-
-# 14. Before Writing Code
-
-Every AI agent should verify
-
-- Does this violate an ADR?
-- Does this duplicate existing functionality?
-- Does this belong in the correct layer?
-- Is there already a Use Case for this?
-- Can this be implemented without coupling modules?
-
-If any answer is "No", stop and redesign first.
-
----
-
-# 15. Success Criteria
-
-A feature is considered complete only if
-
-- architecture remains clean
-- tests pass
-- documentation is updated
-- no duplicated logic is introduced
-- no unnecessary coupling is added
-- future AI agents can understand the implementation
+A feature is complete only when its acceptance criteria pass, relevant tests pass, documentation matches implementation, and recovery/error behavior is handled.
