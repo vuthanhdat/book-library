@@ -21,9 +21,10 @@ An `Open Questions` section records undecided options only. It must not be inter
 
 ### 1. Product intent
 
-- [Product vision](01-product/product-vision.md)
+- [Product vision](00-overview/vision.md)
+- [Core principles](00-overview/principles.md)
+- [Product roadmap](00-overview/roadmap.md)
 - [Product requirements](01-product/requirements.md)
-- [Core principles](01-product/core-principles.md)
 - [Feature catalog](01-product/feature-catalog.md)
 - [Glossary](01-product/glossary.md)
 
