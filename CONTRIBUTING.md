@@ -1,8 +1,8 @@
 # Contributing to Book Library
 
-Book Library is designed for human and AI-assisted development. Consistency, data safety, and truthful documentation matter more than individual style.
+Book Library is designed for human and AI-assisted development. Consistency, data safety, cross-platform behavior, and truthful documentation matter more than individual style.
 
-Read [AGENTS.md](AGENTS.md) before contributing. Its architecture and data-safety rules are mandatory.
+Read [AGENTS.md](AGENTS.md) before contributing. Its architecture, platform, and data-safety rules are mandatory.
 
 ## Before starting
 
@@ -59,6 +59,7 @@ Implementation rules:
 - implement infrastructure behind application/domain ports;
 - preserve user-owned books and Markdown notes;
 - avoid persisted absolute content paths;
+- keep Windows/macOS conditionals out of shared domain and application behavior;
 - make long-running work observable and recoverable according to the milestone.
 
 ## Testing
@@ -69,9 +70,11 @@ Run all checks available for the changed area. Sprint 01 is expected to establis
 - TypeScript type checking and frontend build;
 - frontend tests where meaningful;
 - Markdown linting or link validation;
-- integration tests with temporary SQLite databases and filesystem fixtures.
+- integration tests with temporary SQLite databases and filesystem fixtures;
+- compatible Windows and macOS build checks;
+- real Windows 11 x64 and macOS Intel x64 smoke validation when desktop, filesystem, SQLite, PDFium, or packaging behavior changes.
 
-A missing test command is not evidence that a change is safe. Add focused tests for critical rules before marking a feature complete.
+A missing test command is not evidence that a change is safe. Add focused tests for critical rules before marking a feature complete. Do not claim Intel-macOS coverage unless the required binary or behavior actually ran in a compatible environment.
 
 ## Documentation updates
 
@@ -95,8 +98,8 @@ A pull request should explain:
 - what changed;
 - why the change is needed;
 - which feature/backlog item it serves;
-- important architecture or data-safety implications;
-- checks that were run;
+- important architecture, platform, or data-safety implications;
+- checks that were run and the platforms they actually covered;
 - remaining limitations or follow-up work.
 
 Keep the PR draft while significant checks or acceptance criteria are incomplete.
@@ -109,12 +112,13 @@ Before requesting review, verify:
 - accepted ADRs are followed;
 - dependency direction is preserved;
 - no duplicate domain/use-case logic was added;
+- no unsupported platform assumption leaked into shared layers;
 - source books and note files are not modified unexpectedly;
 - errors and cancellation are handled;
-- critical tests pass;
+- critical tests and required platform checks pass;
 - documentation matches the branch;
 - no secrets, logs, caches, build outputs, or debug code are committed.
 
 ## Definition of done
 
-A task is done when its acceptance criteria pass, tests and builds for affected areas pass, error/recovery behavior is implemented, and the authoritative documentation reflects the actual code.
+A task is done when its acceptance criteria pass on the applicable supported platforms, tests and builds for affected areas pass, error/recovery behavior is implemented, and the authoritative documentation reflects the actual code.
