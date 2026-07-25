@@ -1,69 +1,70 @@
-# Purpose
+# Product Roadmap
 
-Define a phased delivery roadmap that turns the product vision into implementable milestones while preserving architectural integrity.
+## Purpose
 
-# Background
+Sequence Book Library by user outcomes so the project becomes a dependable local reader before expanding into optional intelligence.
 
-Book Library combines several product categories. Without a roadmap, the project could sprawl into a half-built Calibre clone, a basic PDF reader, or an AI demo. The roadmap prioritizes durable foundations first: library initialization, reader reliability, notes, and search before optional AI modules.
+The [feature catalog](../01-product/feature-catalog.md) is authoritative for feature status and milestone ownership. The [implementation plan](../../planning/implementation-plan.md) defines engineering gates and detailed delivery scope.
 
-# Requirements
+## Roadmap principles
 
-- Start with documentation and architecture before application code.
-- Build a minimum usable local library system before advanced features.
-- Keep each milestone independently useful and testable.
-- Avoid requiring cloud credentials, AI keys, or Google Drive APIs.
-- Defer plugin marketplace concerns until local module boundaries are stable.
+- Build a usable vertical outcome at the end of every product milestone.
+- Protect filesystem, offline, relative-path, Markdown, and non-destructive invariants throughout delivery.
+- Establish reader reliability before advanced knowledge or AI features.
+- Do not require cloud credentials, external services, or AI keys for core workflows.
+- Delay plugin and multi-device complexity until stable module boundaries and recovery paths exist.
 
-# Responsibilities
-
-- Sequence implementation work for contributors and AI coding agents.
-- Identify dependencies between modules.
-- Define release gates and quality expectations.
-- Prevent advanced modules from contaminating the core design.
-
-# Architecture
-
-Milestones should align with architecture layers. Foundation milestones establish domain entities, filesystem scanning, SQLite persistence, and Tauri command boundaries. Reader milestones add PDFium and image-folder reading. Knowledge milestones add Markdown notes, backlinks, and FTS5 search. Enhancement milestones add OCR, dictionary, AI assistant, Anki, and plugins.
-
-# Mermaid Diagram
+## Milestone sequence
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Documentation
-    Documentation --> Foundation
-    Foundation --> LibraryInitialization
-    LibraryInitialization --> ReaderMVP
-    ReaderMVP --> NotesMVP
-    NotesMVP --> SearchMVP
-    SearchMVP --> OptionalAI
-    OptionalAI --> PluginSystem
-    PluginSystem --> StableProduct
+flowchart LR
+    M0["M0 Engineering foundation"] --> M1["M1 Library MVP"]
+    M1 --> M2["M2 Reading MVP"]
+    M2 --> M3["M3 Knowledge MVP"]
+    M3 --> M4["M4 Search MVP"]
+    M4 --> M5["M5 Reliability and release"]
+    M5 --> M6["M6 Optional intelligence"]
 ```
 
-# Data Model
+| Milestone | User/developer outcome | Depends on |
+|---|---|---|
+| M0 — Engineering foundation | The repository builds and launches a typed, tested desktop shell with SQLite migrations and enforceable boundaries. | Accepted architecture baseline |
+| M1 — Library MVP | The user selects one folder and browses an idempotently discovered catalog of PDFs and image-folder books. | M0 |
+| M2 — Reading MVP | The user opens either supported book kind, reads smoothly, resumes progress, and uses bookmarks. | M1, PDFium spike |
+| M3 — Knowledge MVP | The user creates portable Markdown notes linked to books and reading locations and uses them with external editors. | M2 |
+| M4 — Search MVP | The user searches books, notes, bookmarks, tags, and supported extracted text fully offline. | M1, M3 |
+| M5 — Reliability and release | The installed Windows app watches, recovers, backs up, repairs, and upgrades safely on a real library. | M1–M4 |
+| M6 — Optional intelligence | OCR, Japanese dictionary, AI assistance, Anki, and module experiments add value without becoming core dependencies. | M5 |
 
-Roadmap dependencies:
+## Dependency anchors
 
-- `Library` and `Book` must exist before reader state.
-- `ReadingLocation` must exist before bookmarks and history.
-- `Note` must exist before backlinks and AI note augmentation.
-- `SearchDocument` must exist before FTS5 queries.
-- `Module` must exist before optional AI and plugin installation state.
+- `Library` and `Book` exist before reader sessions and reading state.
+- `ReadingLocation` exists before bookmarks and location-linked notes.
+- canonical Markdown notes exist before backlinks and note search.
+- rebuildable `SearchDocument` projections exist before FTS5 query features.
+- optional providers use stable application ports and never become prerequisites for M1–M5.
+- installer/recovery work is not complete until user-owned files and non-rebuildable local state are protected.
 
-# Future Extension
+## Release direction
 
-Suggested phases:
+- `0.1.0` targets M0–M2: foundation, library management, PDF/image reading, progress, and bookmarks.
+- `0.2.0` targets M3: Markdown notes and Obsidian interoperability.
+- `0.3.0` targets M4–M5: local search, reliability, recovery, performance, packaging, and the first dependable daily-use release.
+- M6 begins only after the core release gates pass.
 
-1. Documentation foundation: complete architecture, product, module, and ADR docs.
-2. Core shell: Tauri 2 app, React layout, local settings, database migration runner.
-3. Library initialization: root selection, scan, discovery, metadata, thumbnails.
-4. Reader MVP: PDF reader, image-folder reader, bookmarks, history.
-5. Knowledge MVP: Markdown notes, Obsidian compatibility, search.
-6. Optional intelligence: OCR, dictionary, AI assistant, Anki export.
-7. Plugin foundation: manifest, permissions, extension points, sandbox decisions.
+Release numbers are planning targets, not promises. A release does not ship merely because its documents are complete.
 
-# Open Questions
+## Deferred direction
 
-- Should version `0.1` include notes, or should it focus entirely on reading and scanning?
-- Should OCR ship as a built-in optional module or as the first plugin proof of concept?
-- Should plugin support be designed before or after the first working reader MVP?
+These themes remain outside the committed roadmap until explicitly promoted:
+
+- multiple libraries and profiles;
+- hosted web or mobile clients;
+- account-based or Google Drive API sync;
+- untrusted plugin sandbox/marketplace;
+- semantic/vector search;
+- additional ebook/archive formats;
+- multi-user collaboration;
+- in-place PDF annotation modification.
+
+Promoting a deferred theme requires updates to product requirements, the feature catalog, this roadmap, and any affected ADRs.
