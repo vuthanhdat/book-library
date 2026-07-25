@@ -1,338 +1,120 @@
-# CONTRIBUTING.md
-
 # Contributing to Book Library
 
-Thank you for contributing to Book Library.
+Book Library is designed for human and AI-assisted development. Consistency, data safety, and truthful documentation matter more than individual style.
 
-This project is designed to be understandable by both humans and AI coding agents.
-Consistency is more important than individual coding style.
+Read [AGENTS.md](AGENTS.md) before contributing. Its architecture and data-safety rules are mandatory.
 
----
+## Before starting
 
-# Project Philosophy
+1. Confirm the product behavior in `docs/01-product/`.
+2. Locate the feature or backlog identifier.
+3. Read the owning module specification.
+4. Check [accepted ADRs](docs/adr/README.md).
+5. Confirm the work belongs to the active milestone or sprint.
+6. Resolve any blocking design question with an ADR before coding.
 
-Before writing code, understand these principles.
+The [documentation guide](docs/README.md) defines which document wins when content conflicts.
 
-- Desktop First
-- Offline First
-- Filesystem First
-- Relative Path Only
-- Markdown First
-- AI Optional
+## Branches
 
-Read `AGENTS.md` before contributing.
+Use one focused branch per change. Suggested prefixes:
 
----
+- `feature/` — user-visible capability;
+- `fix/` — defect correction;
+- `refactor/` — behavior-preserving code improvement;
+- `docs/` — documentation-only change;
+- `chore/` — tooling, dependencies, or repository maintenance;
+- `agent/` — AI-agent working branch.
 
-# Development Workflow
+Do not mix unrelated cleanup into a feature pull request.
 
-Every change should follow this order.
+## Commit messages
 
-Requirement
+Use concise Conventional Commit messages:
 
-↓
-
-Design
-
-↓
-
-Implementation
-
-↓
-
-Testing
-
-↓
-
-Documentation
-
-↓
-
-Commit
-
-Do not skip documentation.
-
----
-
-# Before Starting
-
-Before implementing a feature, verify:
-
-- Is there already a Feature Spec?
-- Does an ADR already define this decision?
-- Does the architecture document already describe this module?
-- Is another module already responsible for this behavior?
-
-Avoid duplicate implementations.
-
----
-
-# Branch Strategy
-
-Recommended branch names
-
-feature/library-scanner
-
-feature/pdf-reader
-
-feature/notes
-
-feature/search
-
-fix/thumbnail-cache
-
-refactor/domain-model
-
-docs/database-schema
-
-Do not develop unrelated features in the same branch.
-
----
-
-# Commit Messages
-
-Use Conventional Commits.
-
-Examples
-
-feat: add library scanner
-
-feat(reader): implement PDF page navigation
-
-fix(notes): preserve markdown formatting
-
-docs: update architecture
-
-refactor(search): simplify FTS indexing
-
-test(reader): add PDF loading tests
-
-Avoid messages like
-
-update
-
-fix
-
-change
-
-misc
-
----
-
-# Pull Request Checklist
-
-Before opening a Pull Request, verify:
-
-- Feature works
-- Tests pass
-- Documentation updated
-- No duplicate logic
-- No architecture violation
-- No unused code
-- No debug code
-- No unnecessary dependencies
-
----
-
-# Code Organization
-
-Business logic belongs in
-
-Application
-
-or
-
-Domain
-
-Never inside
-
-React Components
-
-Tauri Commands
-
-SQLite Repositories
-
----
-
-# Preferred Development Style
-
-Prefer
-
-Small functions
-
-Explicit names
-
-Composition over inheritance
-
-Immutable objects where practical
-
-Dependency Injection
-
-Strong typing
-
-Pure functions when possible
-
-Avoid
-
-God Services
-
-Utility classes with unrelated methods
-
-Long functions
-
-Deep nesting
-
-Shared mutable state
-
-Copy-paste implementations
-
----
-
-# Error Handling
-
-Never silently ignore errors.
-
-Prefer
-
-Return typed errors.
-
-Recover when possible.
-
-Log useful context.
-
-Show meaningful messages to users.
-
-Do not crash unless data integrity is at risk.
-
----
-
-# Database Rules
-
-SQLite stores
-
-- metadata
-- indexes
-- reading state
-- settings
-- jobs
-
-SQLite never stores
-
-- PDFs
-- images
-- Markdown contents
-
-Never persist absolute paths.
-
----
-
-# Filesystem Rules
-
-The user's library belongs to the user.
-
-Never
-
-Rename books
-
-Move books
-
-Delete books
-
-Modify PDFs
-
-Modify image folders
-
-unless explicitly requested.
-
-Generated artifacts such as
-
-- thumbnails
-- cache
-- indexes
-
-must be stored separately.
-
----
-
-# Testing
-
-Each feature should include appropriate tests.
-
-Recommended order
-
-Unit Tests
-
-↓
-
-Application Tests
-
-↓
-
-Integration Tests
-
-UI tests are optional during early development.
-
----
-
-# Documentation
-
-Whenever changing
-
-Database
-
-API
-
-Architecture
-
-Events
-
-Jobs
-
-Settings
-
-also update the corresponding documentation.
-
-Documentation is considered part of the feature.
-
----
-
-# Definition of Done
-
-A task is complete only when
-
-- Code is finished
-- Tests pass
-- Documentation updated
-- No architecture violations
-- No duplicated logic
-- Feature satisfies its specification
-
----
-
-# Project Structure
-
+```text
+feat(library): add relative path validation
+fix(reader): preserve page after reopen
+docs: record database location decision
+refactor(search): isolate FTS query builder
+test(library): cover natural page ordering
+chore(ci): add Rust and frontend checks
 ```
 
-docs/
-architecture/
-database/
-api/
-product/
+Each commit should leave the branch understandable. Separate mechanical restructuring from behavior changes when that makes review safer.
 
-planning/
+## Development workflow
 
-specs/
+Use this sequence:
 
-src/
-
+```text
+requirement -> decision -> implementation -> tests -> documentation -> review
 ```
 
-Keep documentation synchronized with implementation.
+Implementation rules:
 
----
+- enter business behavior through an application use case;
+- keep Tauri commands thin;
+- keep React free of database and source-filesystem access;
+- implement infrastructure behind application/domain ports;
+- preserve user-owned books and Markdown notes;
+- avoid persisted absolute content paths;
+- make long-running work observable and recoverable according to the milestone.
 
-# Final Principle
+## Testing
 
-Optimize for long-term maintainability rather than short-term speed.
+Run all checks available for the changed area. Sprint 01 is expected to establish:
 
-The codebase should remain understandable after several years by contributors who have never seen the project before.
+- Rust formatting, linting, and tests;
+- TypeScript type checking and frontend build;
+- frontend tests where meaningful;
+- Markdown linting or link validation;
+- integration tests with temporary SQLite databases and filesystem fixtures.
+
+A missing test command is not evidence that a change is safe. Add focused tests for critical rules before marking a feature complete.
+
+## Documentation updates
+
+Update only authoritative documents affected by the change:
+
+| Change | Documentation |
+|---|---|
+| Product behavior or scope | requirements and feature catalog |
+| Technical decision | new ADR, or supersede an existing ADR |
+| Layer/module ownership | architecture documents |
+| Database schema or migration | persistence and recovery notes |
+| Milestone/sprint scope | implementation plan, backlog, or sprint |
+| Feature completion | feature catalog status |
+
+Do not mark planned functionality as implemented until the source and tests exist.
+
+## Pull request expectations
+
+A pull request should explain:
+
+- what changed;
+- why the change is needed;
+- which feature/backlog item it serves;
+- important architecture or data-safety implications;
+- checks that were run;
+- remaining limitations or follow-up work.
+
+Keep the PR draft while significant checks or acceptance criteria are incomplete.
+
+## Review checklist
+
+Before requesting review, verify:
+
+- scope is focused;
+- accepted ADRs are followed;
+- dependency direction is preserved;
+- no duplicate domain/use-case logic was added;
+- source books and note files are not modified unexpectedly;
+- errors and cancellation are handled;
+- critical tests pass;
+- documentation matches the branch;
+- no secrets, logs, caches, build outputs, or debug code are committed.
+
+## Definition of done
+
+A task is done when its acceptance criteria pass, tests and builds for affected areas pass, error/recovery behavior is implemented, and the authoritative documentation reflects the actual code.

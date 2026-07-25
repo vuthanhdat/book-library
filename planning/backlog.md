@@ -1,265 +1,140 @@
 # Product Backlog
 
+## Purpose and authority
+
+This backlog groups catalog features into deliverable engineering slices and records priority/dependency order.
+
+- [Feature catalog](../docs/01-product/feature-catalog.md) owns feature IDs, milestone assignment, and implementation status.
+- [Implementation plan](implementation-plan.md) owns milestone outcomes and gates.
+- The active sprint owns detailed tasks and acceptance criteria for work that is ready to start.
+- Module specifications own subsystem behavior.
+
+Do not create a second feature ID in this backlog. A backlog item may group several catalog IDs into one vertical slice.
+
 ## Priority model
 
-- P0: required to make the current milestone usable.
-- P1: important quality or workflow capability.
-- P2: valuable enhancement after the core is stable.
-- P3: exploratory or optional intelligence.
-
-## Epic A — Engineering foundation
-
-### A1. Desktop application scaffold — P0
-
-Acceptance criteria:
-
-- Tauri 2 app launches on Windows 11.
-- React and TypeScript frontend renders the main shell.
-- Tailwind and Shadcn UI are configured.
-- Frontend can call a typed Rust command.
-
-### A2. Architecture boundaries — P0
-
-Acceptance criteria:
-
-- Domain code has no dependency on Tauri, SQLite, filesystem, PDFium, or React.
-- Tauri commands delegate to application use cases.
-- Infrastructure adapters implement application/domain ports.
-
-### A3. SQLite and migrations — P0
-
-Acceptance criteria:
-
-- Database is created in the selected app-data location.
-- Migrations run automatically and are versioned.
-- Failed migrations produce a recoverable error and diagnostic log.
-
-### A4. Diagnostics and CI — P1
-
-Acceptance criteria:
-
-- Local logs are available without exposing book contents.
-- CI checks Rust, TypeScript, tests, formatting, and Markdown.
-
-## Epic B — Library management
-
-### B1. Configure library root — P0
-
-Acceptance criteria:
-
-- User selects a folder through a native dialog.
-- Root is validated and stored as local configuration.
-- Cancelling or selecting an unavailable folder is handled safely.
-
-### B2. Relative path model — P0
-
-Acceptance criteria:
-
-- Persisted book and page paths contain no drive letter or root prefix.
-- `..` traversal outside the root is rejected.
-- Separators are normalized consistently.
-
-### B3. Recursive scanner — P0
-
-Acceptance criteria:
-
-- Scan traverses the root recursively.
-- Progress, cancellation, warnings, and failures are reported.
-- Hidden/system/app-cache folders can be excluded by policy.
-
-### B4. PDF discovery — P0
-
-Acceptance criteria:
-
-- Each supported PDF becomes one book candidate.
-- Initial title derives from filename.
-- Unreadable PDFs are reported without stopping the scan.
-
-### B5. Image-folder discovery — P0
-
-Acceptance criteria:
-
-- A folder containing supported page images can become one book.
-- Page files use deterministic natural sorting.
-- Parent category folders are not incorrectly imported as books.
-- Mixed-content and nested-folder rules are explicit and tested.
-
-### B6. Catalog persistence and reconciliation — P0
-
-Acceptance criteria:
-
-- Repeated scans upsert rather than duplicate records.
-- Changed books update derived metadata while preserving user metadata.
-- Missing books are marked missing instead of immediately deleted.
-
-### B7. Metadata extraction — P0
-
-Acceptance criteria:
-
-- Title, kind, page count, size, and timestamps are captured when available.
-- Extraction failures are isolated per book.
-
-### B8. Thumbnail generation — P0
-
-Acceptance criteria:
-
-- PDF cover uses the first renderable page.
-- Image-folder cover uses the first eligible page image.
-- Thumbnails are cached outside source files and can be rebuilt.
-
-### B9. Library browser — P0
-
-Acceptance criteria:
-
-- Catalog can be displayed as a virtualized grid or list.
-- User can view cover, title, type, status, and folder context.
-- Books can be opened from the catalog.
-
-### B10. Manual rescan and rebuild — P1
-
-Acceptance criteria:
-
-- User can run incremental rescan.
-- User can rebuild thumbnails and repair catalog projections.
-
-### B11. Filesystem watcher — P1
-
-Acceptance criteria:
-
-- Create, rename, modify, and delete events are debounced.
-- Targeted reconciliation updates affected records.
-- Watcher failure falls back to manual rescan rather than corrupting state.
-
-## Epic C — Reader
-
-### C1. Generic reader contract — P0
-
-Acceptance criteria:
-
-- Reader lifecycle and location model support both PDF and image folders.
-- Catalog, progress, and bookmark logic do not depend on PDFium details.
-
-### C2. PDFium packaging spike — P0
-
-Acceptance criteria:
-
-- A chosen binding renders a fixture PDF on Windows development and packaged builds.
-- Native binary licensing and distribution are documented in an ADR.
-
-### C3. PDF reader MVP — P0
-
-Acceptance criteria:
-
-- Open, render, navigate, zoom, fit, and rotate.
-- Missing, corrupt, unsupported, and password-protected states are user-readable.
-
-### C4. Image-folder reader MVP — P0
-
-Acceptance criteria:
-
-- Single-page and continuous reading modes work.
-- Pages lazy-load and memory use remains bounded.
-- Natural catalog order matches reader order.
-
-### C5. Reading state — P0
-
-Acceptance criteria:
-
-- Current location is saved with debouncing.
-- Reopening a book resumes at the saved location.
-- Recent books list reflects activity.
-
-### C6. Bookmarks — P1
-
-Acceptance criteria:
-
-- Bookmark current location with optional title and note.
-- Navigate from bookmark back to the saved location.
-- Bookmark persists when a source book is temporarily missing.
-
-## Epic D — Notes and knowledge
-
-### D1. Notes-root configuration — P0
-
-### D2. Create and edit Markdown notes — P0
-
-### D3. Book and location associations — P0
-
-### D4. Markdown parsing projection — P0
-
-### D5. Obsidian interoperability — P1
-
-### D6. Backlinks — P1
-
-### D7. External note watcher — P1
-
-Common acceptance criteria:
-
-- Markdown text remains canonical on disk.
-- SQLite stores only projections and relationships.
-- Files remain usable in Obsidian and plain editors.
-- Reindexing does not rewrite user formatting unexpectedly.
-
-## Epic E — Search
-
-### E1. FTS5 schema — P0
-
-### E2. Search-document projection — P0
-
-### E3. Book and note indexing — P0
-
-### E4. Global search UI — P0
-
-### E5. Incremental index queue — P1
-
-### E6. Rebuild and repair — P1
-
-Acceptance criteria:
-
-- Search is offline.
-- Canonical sources can rebuild all FTS data.
-- Filters distinguish books, notes, bookmarks, tags, and later OCR pages.
-
-## Epic F — Reliability and delivery
-
-### F1. Persistent background jobs — P1
-
-### F2. Cancellation and recovery — P1
-
-### F3. Backup and rebuild tools — P1
-
-### F4. Large-library performance suite — P1
-
-### F5. Windows installer and upgrade — P0 for release
-
-### F6. Accessibility and keyboard navigation — P1
-
-## Epic G — Optional intelligence
-
-### G1. OCR module — P3
-
-### G2. Japanese dictionary module — P3
-
-### G3. AI provider abstraction — P3
-
-### G4. Explain, translate, and summarize actions — P3
-
-### G5. Anki export — P3
-
-### G6. Plugin manifest and permissions — P3
-
-Acceptance criteria:
-
-- Core workflows work with every optional module disabled.
-- AI output is draft content until explicitly accepted by the user.
-- Network permissions and secrets are isolated from the core.
-
-## Deferred from first release
-
-- Multi-user collaboration.
-- Hosted web application.
-- Google Drive API integration.
-- Mobile clients.
-- Editing source PDF annotations in place.
-- EPUB, CBZ, CBR, MOBI, and AZW3 support.
-- Plugin marketplace and untrusted plugin sandbox.
+| Priority | Meaning |
+|---|---|
+| P0 | Required for the current milestone outcome. |
+| P1 | Important quality, recovery, or workflow capability within the milestone. |
+| P2 | Valuable enhancement after the milestone's core path works. |
+| P3 | Optional intelligence or exploratory work. |
+
+Priority is meaningful inside a milestone; it does not move an M6 item ahead of unfinished M1 work.
+
+## Current execution queue — M0
+
+Detailed tasks and acceptance criteria are in [Sprint 01](sprint-01.md).
+
+| Backlog item | Feature IDs | Priority | State | Dependency | Outcome |
+|---|---|---|---|---|---|
+| M0-01 Application scaffold | ENG-001 | P0 | Ready | None | Tauri/React/TypeScript app launches on Windows 11. |
+| M0-02 Architecture modules | ENG-002 | P0 | Ready | M0-01 | Rust modular-monolith structure and composition root exist. |
+| M0-03 Domain primitives | ENG-005 | P0 | Ready | M0-02 | Tested IDs, enums, errors, and `RelativePath`. |
+| M0-04 SQLite foundation | ENG-004, ENG-008 | P0 | Ready | M0-02, M0-03 | App-data database, migrations, and temporary fixtures work. |
+| M0-05 Typed application status | ENG-003 | P0 | Ready | M0-04 | React calls a real use case through a thin typed Tauri command. |
+| M0-06 Honest frontend shell | ENG-001, ENG-003 | P0 | Ready | M0-05 | Loading, healthy/no-library, and startup-error states render. |
+| M0-07 Logging and diagnostics | ENG-006 | P1 | Ready | M0-04 | Safe structured local logs exist in app data. |
+| M0-08 CI quality gates | ENG-007 | P0 | Ready | M0-01–M0-07 | Actual format/lint/test/build/link checks run and fail correctly. |
+| M0-09 Technical spikes | Risk reduction | P0 | Ready | M0-01 | PDFium, Drive Desktop, and SQLite implementation choices are documented. |
+
+## M1 — Library MVP backlog
+
+| Backlog item | Feature IDs | Priority | Depends on | Outcome |
+|---|---|---|---|---|
+| M1-01 Configure library | LIB-001 | P0 | M0 | Select, validate, persist, and change one local root. |
+| M1-02 Scanner job | LIB-002 | P0 | M1-01 | Recursive scan reports progress, cancellation, warnings, and failures. |
+| M1-03 Candidate discovery | LIB-003, LIB-004 | P0 | M1-02 | PDFs and eligible image folders become deterministic candidates. |
+| M1-04 Catalog reconciliation | LIB-005, LIB-006, LIB-007 | P0 | M1-03 | Repeated scans upsert, preserve user metadata, and mark missing items safely. |
+| M1-05 Metadata extraction | LIB-008 | P0 | M1-04 | Core metadata is captured with per-book failure isolation. |
+| M1-06 Thumbnail pipeline | LIB-009 | P0 | M1-03, M1-04 | Rebuildable covers are generated outside source folders. |
+| M1-07 Library browser | LIB-010 | P0 | M1-04, M1-06 | Virtualized grid/list shows catalog and opens a selected book action. |
+| M1-08 Rescan and repair | LIB-011 | P1 | M1-02–M1-07 | User can rescan and repair derived catalog/thumbnail state. |
+
+Blocking decisions before M1 implementation:
+
+- Windows path uniqueness and case-only rename policy;
+- stable identity during rename;
+- image-folder eligibility, mixed-content, and nested-chapter policy;
+- thumbnail format and invalidation.
+
+## M2 — Reading MVP backlog
+
+| Backlog item | Feature IDs | Priority | Depends on | Outcome |
+|---|---|---|---|---|
+| M2-01 Reader contract | READ-001 | P0 | M1 catalog | Shared lifecycle/location model supports both book kinds. |
+| M2-02 PDF reader | READ-002, READ-004, READ-006, READ-009 | P0 | M0 PDFium spike, M2-01 | PDF open/render/navigation/fit/rotation and error states work. |
+| M2-03 Image reader | READ-003, READ-004, READ-005, READ-006, READ-007 | P0 | M1 image ordering, M2-01 | Single/continuous modes lazy-load ordered pages. |
+| M2-04 Reader ergonomics | READ-008 | P1 | M2-02, M2-03 | Fullscreen and keyboard shortcuts work consistently. |
+| M2-05 Reading state | PROG-001, PROG-002, PROG-003 | P0 | M2-01 | Progress saves with debouncing and resumes reliably. |
+| M2-06 Bookmarks | BOOKMARK-001, BOOKMARK-002, BOOKMARK-003 | P1 | M2-01, M2-05 | Bookmarks persist and navigate to saved locations. |
+
+## M3 — Knowledge MVP backlog
+
+| Backlog item | Feature IDs | Priority | Depends on | Outcome |
+|---|---|---|---|---|
+| M3-01 Notes-root configuration | NOTE-001 | P0 | M0 settings | Configure and validate a notes root. |
+| M3-02 Markdown file workflow | NOTE-002 | P0 | M3-01 | Create and conservatively edit portable notes. |
+| M3-03 Book/location associations | NOTE-003 | P0 | M2 locations, M3-02 | Notes link to books and reading locations. |
+| M3-04 Markdown projection | NOTE-004, NOTE-005 | P0 | M3-02 | Parse metadata/links into rebuildable SQLite projections. |
+| M3-05 External interoperability | NOTE-006 | P1 | M3-01 | Open notes and folders in normal editors/Obsidian. |
+| M3-06 Backlinks | NOTE-007 | P1 | M3-04 | Resolve and display basic backlinks. |
+| M3-07 External edit reconciliation | NOTE-008 | P1 | M3-04 | External changes update projections without destructive rewrites. |
+
+## M4 — Search MVP backlog
+
+| Backlog item | Feature IDs | Priority | Depends on | Outcome |
+|---|---|---|---|---|
+| M4-01 Search schema/projection | SEARCH-001 | P0 | M1 catalog, M3 projections | Rebuildable search documents and FTS5 schema exist. |
+| M4-02 Core indexing | SEARCH-002, SEARCH-003, SEARCH-004 | P0 | M4-01 | Books, notes, bookmarks, and tags are searchable offline. |
+| M4-03 Global search UI | SEARCH-005 | P0 | M4-02 | Query and result-type filters navigate to source items. |
+| M4-04 Incremental index queue | SEARCH-006 | P1 | M4-01, scan/note events | Changed content updates without a full rebuild. |
+| M4-05 Repair and diagnostics | SEARCH-007 | P1 | M4-01–M4-04 | User can rebuild and inspect failed documents. |
+
+## M5 — Reliability and release backlog
+
+| Backlog item | Feature IDs | Priority | Depends on | Outcome |
+|---|---|---|---|---|
+| M5-01 Filesystem reconciliation | REL-001 | P0 | M1 scan policies | Debounced watcher targets affected content and falls back safely. |
+| M5-02 Job recovery | REL-002 | P0 | background job framework | Interrupted work resumes or fails explicitly. |
+| M5-03 Backup and rebuild | REL-003 | P0 | stable schema | Integrity, backup, and rebuild paths protect local state. |
+| M5-04 Cache maintenance | REL-004 | P1 | thumbnails/indexes | Orphans and stale rebuildable artifacts are cleaned safely. |
+| M5-05 Performance suite | REL-005 | P0 | M1–M4 | Measured large-library fixtures define release budgets. |
+| M5-06 Windows delivery | REL-006 | P0 | all core milestones | Installer and upgrades preserve state and launch reliably. |
+| M5-07 Accessibility | REL-007 | P1 | stable UI | Keyboard and accessibility pass covers core workflows. |
+| M5-08 Diagnostics | REL-008 | P1 | logging/jobs | User can export a privacy-safe diagnostic report. |
+
+## M6 — Optional intelligence backlog
+
+M6 starts only after the M5 release gate. All items are P3 until explicitly promoted by a milestone revision.
+
+| Backlog item | Feature IDs | Outcome |
+|---|---|---|
+| M6-01 OCR | OCR-001, OCR-002 | Optional page-level OCR behind a cancellable job port. |
+| M6-02 Japanese dictionary | DICT-001, DICT-002, DICT-003 | Offline lookup for Japanese reading workflows. |
+| M6-03 AI provider boundary | AI-001 | Optional network/provider abstraction with isolated secrets. |
+| M6-04 Reading assistance | AI-002, AI-003, AI-004 | Explain, translate, summarize, and draft cards without automatic canonical writes. |
+| M6-05 Anki export | ANKI-001 | Export accepted card data in an Anki-compatible form. |
+| M6-06 Trusted module proof | PLUGIN-001 | Validate a minimal in-process manifest/capability model. |
+
+## Deferred backlog
+
+The feature catalog records deferred IDs. Current deferred themes include:
+
+- multi-library support;
+- reading statistics and goals;
+- graph and semantic search;
+- additional ebook/archive formats;
+- hosted/web/mobile clients;
+- direct Google Drive API integration;
+- untrusted plugin sandbox or marketplace;
+- in-place PDF annotation modification;
+- multi-user collaboration.
+
+## Backlog maintenance rules
+
+- Create issues/tasks from the next incomplete backlog slice, preserving the catalog feature IDs.
+- Add detailed acceptance criteria to the active sprint or issue; do not copy full module specifications into this file.
+- Split a slice when it cannot be reviewed or delivered safely as one vertical outcome.
+- Do not move work between milestones without updating the feature catalog and implementation plan in the same change.
+- Do not mark a backlog slice complete while any mapped feature remains unimplemented or required checks fail.

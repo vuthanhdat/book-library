@@ -1,79 +1,93 @@
-# Purpose
+# ADR-001: Use SQLite for local operational data
 
-Record the decision to use SQLite as the local database for Book Library metadata, operational state, jobs, and search indexes.
+- **Status:** Accepted
+- **Date:** 2026-07-25
 
-# Background
+## Context
 
-Book Library is a desktop-first, offline-first application for a single user. It needs reliable local persistence without requiring a server. The database must support structured metadata, migrations, transactions, background job state, and full-text search. Books themselves remain in the filesystem and are never copied into the database.
+Book Library is a single-user, desktop-first, offline-first application. It needs structured local persistence for catalog metadata, reading state, relationships, background jobs, migrations, and full-text search without requiring a server.
 
-Decision: use SQLite as the embedded application database.
+Source books remain in the filesystem and user-authored note text remains in Markdown. The database is operational state and a projection layer, not the owner of those files.
 
-# Requirements
+## Decision
 
-- Must work offline.
-- Must require no external database server.
-- Must support transactional metadata updates.
-- Must support schema migrations.
-- Must support SQLite FTS5 for local search.
-- Must be easy to back up and inspect.
-- Must never store full book binaries as canonical content.
-- Must be rebuildable for catalog projections by rescanning the library root.
-
-# Responsibilities
+Use SQLite as the embedded application database.
 
 SQLite is responsible for:
 
-- Library configuration metadata.
-- Discovered book records.
-- Derived metadata and fingerprints.
-- Reading state, bookmarks, and history.
-- Notes projections and link indexes.
-- Thumbnail, scan, OCR, and indexing job state.
-- Search projections and FTS5 tables.
+- application and library configuration metadata;
+- discovered book records and derived fingerprints;
+- reading state, history, and bookmarks;
+- note metadata, links, and search projections;
+- scan, thumbnail, indexing, and later OCR job state;
+- SQLite FTS5 tables and supporting search documents.
 
 SQLite is not responsible for:
 
-- Owning source book files.
-- Replacing Markdown note files.
-- Synchronizing through Google APIs.
-- Storing absolute source paths as durable identifiers.
+- storing PDFs or page images as canonical content;
+- being the only copy of Markdown note bodies;
+- synchronizing files through Google APIs;
+- using absolute source paths as durable book/note identifiers.
 
-# Architecture
+The database is stored in OS application data as defined by [ADR-005](ADR-005-local-application-data.md).
 
-SQLite must be accessed through repository interfaces and migration tooling. The application layer should coordinate transactions. FTS5 tables should be treated as rebuildable projections. Domain entities should not contain SQL-specific assumptions.
+## Considered options
 
-# Mermaid Diagram
+### External database server
+
+Rejected because it adds installation, authentication, networking, and operational complexity to a single-user offline desktop product.
+
+### JSON or custom files only
+
+Rejected because transactions, migrations, relations, queries, job recovery, and full-text search would require substantial custom infrastructure.
+
+### SQLite
+
+Accepted because it is embedded, transactional, widely supported, inspectable, and provides FTS5.
+
+## Architecture consequences
+
+- Application use cases own transaction boundaries.
+- Infrastructure repositories contain SQL and implement application/domain ports.
+- Domain entities contain no SQL-specific assumptions.
+- FTS tables, thumbnails, OCR text, and similar projections are rebuildable.
+- Schema is introduced incrementally by milestone rather than creating every future table in the first migration.
 
 ```mermaid
 flowchart TD
-    App["Application use cases"] --> Repo["Repository ports"]
-    SQLiteAdapter["SQLite adapter"] --> Repo
-    SQLiteAdapter --> Tables["Metadata tables"]
-    SQLiteAdapter --> Jobs["Job tables"]
-    SQLiteAdapter --> FTS["FTS5 search tables"]
-    FS["Filesystem books"] --> App
-    Notes["Markdown notes"] --> App
+    UseCases["Application use cases"] --> Ports["Repository and transaction ports"]
+    SQLiteAdapter["SQLite infrastructure adapter"] --> Ports
+    SQLiteAdapter --> Metadata["Metadata and relationships"]
+    SQLiteAdapter --> State["Reading and job state"]
+    SQLiteAdapter --> FTS["Rebuildable FTS5 projections"]
+    Files["Books and Markdown files"] --> UseCases
 ```
 
-# Data Model
+## Initial persistence groups
 
-SQLite stores:
+The architecture anticipates these groups, added only when required:
 
-- `libraries`, `books`, `book_files`, `book_metadata`.
-- `reading_state`, `reading_history`, `bookmarks`.
-- `notes`, `note_links`, `book_note_links` as projections.
-- `scan_jobs`, `thumbnail_jobs`, `search_index_jobs`, `ocr_jobs`.
-- `search_documents` and FTS5 virtual tables.
+- configuration: settings and configured libraries;
+- catalog: books, book files, metadata, and scan issues;
+- operations: scan, thumbnail, indexing, and OCR jobs;
+- reading: current state, history, and bookmarks;
+- notes: file projections and relationships;
+- search: search documents and FTS5 tables.
 
-# Future Extension
+## Implementation constraints
 
-- Optional database export/import tools.
-- Integrity check command in the app.
-- Rebuild indexes command.
-- Metadata sidecar export for users who want extra portability.
+- Enable foreign keys for every connection.
+- Use a versioned forward-only migration mechanism.
+- Validate migration failure and recovery behavior with temporary databases.
+- Select journal mode only after Windows behavior is tested during Sprint 01.
+- Never infer that a SQLite backup also backs up source books or Markdown notes.
+- Do not synchronize a live SQLite database through Google Drive Desktop as a substitute for designed metadata sync.
+- Keep repository methods aligned with use-case concepts rather than exposing generic database CRUD to the UI.
 
-# Open Questions
+## Follow-up decisions
 
-- Should the SQLite file live in operating-system app data or inside the library root?
-- Should WAL mode be enabled by default?
-- Should migrations be versioned as SQL files or embedded in Rust code?
+Sprint 01 must record the chosen Rust SQLite library, migration organization, connection model, transaction convention, and validated journal mode. Those implementation choices must comply with this ADR and ADR-005.
+
+## Revisit when
+
+Revisit SQLite only if measured requirements cannot be met by its concurrency, query, migration, or FTS capabilities. A replacement must preserve offline operation and the canonical ownership of books and Markdown notes.

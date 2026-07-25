@@ -1,212 +1,161 @@
 # Feature Catalog
 
-This document provides a complete inventory of all product features.
+## Status
 
-Each feature has
+This catalog is the authoritative inventory of product capabilities, implementation status, and milestone ownership.
 
-- unique identifier
-- business value
-- implementation status
-- dependencies
-- target milestone
+The repository currently contains specifications only. No feature may be marked `In Progress` or `Completed` until implementation work exists on an active branch and satisfies the status rules below.
 
-This document is the primary reference for planning and implementation.
-
----
-
-# Feature Status
+## Feature status
 
 | Status | Meaning |
-|---------|---------|
-| Planned | Defined but not started |
-| In Progress | Currently under development |
-| Completed | Fully implemented |
-| Future | Not part of current roadmap |
+|---|---|
+| Draft | The capability is being explored and is not implementation-ready. |
+| Planned | The capability is accepted for a future milestone but not scheduled for the active sprint. |
+| Ready | Scope, dependencies, acceptance criteria, and blocking decisions are sufficient to start. |
+| In Progress | Implementation exists on an active branch or pull request. |
+| Completed | Implementation is merged, required checks pass, and documentation matches the code. |
+| Deferred | Explicitly outside the committed roadmap or postponed until a trigger is met. |
 
----
+Design documents alone never justify `In Progress` or `Completed`.
 
-# Milestones
+## Milestones
 
-M1 — Foundation
+| Milestone | Outcome |
+|---|---|
+| M0 — Engineering foundation | Runnable Tauri/React/Rust shell, architecture boundaries, SQLite migrations, typed health flow, tests, and CI. |
+| M1 — Library MVP | Configure one root, scan PDFs and image folders, reconcile catalog records, generate thumbnails, and browse the library. |
+| M2 — Reading MVP | Open PDF/image books, navigate, restore progress, and manage bookmarks. |
+| M3 — Knowledge MVP | Create portable Markdown notes, associate them with books/locations, and support Obsidian interoperability. |
+| M4 — Search MVP | Search books, notes, bookmarks, tags, and supported extracted text using rebuildable local indexes. |
+| M5 — Reliability and release | Watch/recover/rebuild safely, validate large libraries, package Windows releases, and protect upgrades. |
+| M6 — Optional intelligence | Add OCR, dictionary, AI, Anki, and plugin experiments without creating core dependencies. |
 
-M2 — Library
-
-M3 — Reader
-
-M4 — Knowledge
-
-M5 — Search
-
-M6 — AI
-
----
-
-# Library
+## Engineering foundation
 
 | ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| LIB-001 | Initialize Library | Planned | M1 |
-| LIB-002 | Scan Library | Planned | M1 |
-| LIB-003 | Detect New Books | Planned | M2 |
-| LIB-004 | Detect Missing Books | Planned | M2 |
-| LIB-005 | Generate Thumbnails | Planned | M2 |
-| LIB-006 | Book Metadata | Planned | M2 |
-| LIB-007 | Favorite Books | Future | M5 |
-| LIB-008 | Multiple Libraries | Future | M6 |
+|---|---|---|---|
+| ENG-001 | Tauri 2 + React + TypeScript application scaffold | Ready | M0 |
+| ENG-002 | Rust modular-monolith structure and dependency boundaries | Ready | M0 |
+| ENG-003 | Typed Tauri command/event contracts | Ready | M0 |
+| ENG-004 | SQLite connection and migration runner | Ready | M0 |
+| ENG-005 | Domain identifiers, `RelativePath`, and common errors | Ready | M0 |
+| ENG-006 | Structured logging and safe diagnostics | Ready | M0 |
+| ENG-007 | Rust/frontend/Markdown CI quality gates | Ready | M0 |
+| ENG-008 | Temporary library and SQLite test fixtures | Ready | M0 |
 
----
-
-# Reader
+## Library
 
 | ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| READ-001 | Open PDF | Planned | M2 |
-| READ-002 | Open Image Folder | Planned | M2 |
-| READ-003 | Next / Previous Page | Planned | M2 |
-| READ-004 | Restore Reading Progress | Planned | M2 |
-| READ-005 | Zoom | Planned | M2 |
-| READ-006 | Fit Width | Planned | M2 |
-| READ-007 | Fit Height | Planned | M2 |
-| READ-008 | Fullscreen | Planned | M2 |
-| READ-009 | Keyboard Shortcuts | Planned | M2 |
+|---|---|---|---|
+| LIB-001 | Configure and initialize one library root | Planned | M1 |
+| LIB-002 | Recursive scan with progress and cancellation | Planned | M1 |
+| LIB-003 | Discover PDF books | Planned | M1 |
+| LIB-004 | Discover image-folder books with natural page ordering | Planned | M1 |
+| LIB-005 | Idempotent catalog upsert and reconciliation | Planned | M1 |
+| LIB-006 | Detect changed and newly added books | Planned | M1 |
+| LIB-007 | Mark unavailable/missing books without destructive deletion | Planned | M1 |
+| LIB-008 | Extract core book metadata | Planned | M1 |
+| LIB-009 | Generate rebuildable thumbnails | Planned | M1 |
+| LIB-010 | Browse catalog as grid/list | Planned | M1 |
+| LIB-011 | Manual rescan and projection repair | Planned | M1 |
+| LIB-012 | Favorite books | Deferred | Post-MVP |
+| LIB-013 | Multiple libraries | Deferred | Post-MVP |
 
----
-
-# Reading Progress
-
-| ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| PROG-001 | Auto Save Progress | Planned | M2 |
-| PROG-002 | Resume Reading | Planned | M2 |
-| PROG-003 | Reading Statistics | Future | M5 |
-
----
-
-# Bookmark
+## Reader and reading state
 
 | ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| BOOKMARK-001 | Add Bookmark | Planned | M3 |
-| BOOKMARK-002 | Delete Bookmark | Planned | M3 |
-| BOOKMARK-003 | Bookmark List | Planned | M3 |
+|---|---|---|---|
+| READ-001 | Generic reader session and location contract | Planned | M2 |
+| READ-002 | Open and render PDF books through PDFium adapter | Planned | M2 |
+| READ-003 | Open image-folder books | Planned | M2 |
+| READ-004 | Next/previous page and direct page navigation | Planned | M2 |
+| READ-005 | Single-page and continuous image reading modes | Planned | M2 |
+| READ-006 | Zoom, fit width, fit height, and rotation | Planned | M2 |
+| READ-007 | Lazy loading and bounded page cache | Planned | M2 |
+| READ-008 | Fullscreen and keyboard shortcuts | Planned | M2 |
+| READ-009 | User-readable missing/corrupt/unsupported states | Planned | M2 |
+| PROG-001 | Debounced automatic progress save | Planned | M2 |
+| PROG-002 | Resume from last reading location | Planned | M2 |
+| PROG-003 | Recent books | Planned | M2 |
+| BOOKMARK-001 | Add bookmark at current location | Planned | M2 |
+| BOOKMARK-002 | Edit/delete bookmark | Planned | M2 |
+| BOOKMARK-003 | Per-book bookmark list and navigation | Planned | M2 |
+| PROG-004 | Reading statistics and goals | Deferred | Post-MVP |
 
----
-
-# Notes
-
-| ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| NOTE-001 | Create Markdown Note | Planned | M3 |
-| NOTE-002 | Link Note To Book | Planned | M3 |
-| NOTE-003 | Open Note In Obsidian | Planned | M3 |
-| NOTE-004 | Backlinks | Future | M5 |
-| NOTE-005 | Graph View | Future | M6 |
-
----
-
-# Search
-
-| ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| SEARCH-001 | Search Books | Planned | M4 |
-| SEARCH-002 | Full Text Search | Planned | M4 |
-| SEARCH-003 | Search Notes | Planned | M4 |
-| SEARCH-004 | Search Tags | Planned | M4 |
-
----
-
-# OCR
+## Notes and knowledge
 
 | ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| OCR-001 | OCR Image Page | Future | M5 |
-| OCR-002 | OCR PDF Page | Future | M5 |
+|---|---|---|---|
+| NOTE-001 | Configure notes root | Planned | M3 |
+| NOTE-002 | Create and conservatively edit Markdown notes | Planned | M3 |
+| NOTE-003 | Associate notes with books and reading locations | Planned | M3 |
+| NOTE-004 | Parse headings, tags, links, and YAML frontmatter | Planned | M3 |
+| NOTE-005 | Rebuildable SQLite note projection | Planned | M3 |
+| NOTE-006 | Open note/folder in external editor or Obsidian | Planned | M3 |
+| NOTE-007 | Basic backlinks | Planned | M3 |
+| NOTE-008 | Reconcile externally edited notes | Planned | M3 |
+| NOTE-009 | Graph view | Deferred | Post-MVP |
 
----
-
-# Dictionary
-
-| ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| DICT-001 | Japanese Dictionary | Future | M5 |
-| DICT-002 | Vietnamese Meaning | Future | M5 |
-| DICT-003 | Kanji Lookup | Future | M5 |
-| DICT-004 | Pitch Accent | Future | M6 |
-
----
-
-# AI
+## Search
 
 | ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| AI-001 | Translation | Future | M6 |
-| AI-002 | Summary | Future | M6 |
-| AI-003 | Flashcard Generation | Future | M6 |
-| AI-004 | Note Suggestions | Future | M6 |
+|---|---|---|---|
+| SEARCH-001 | FTS5 schema and search-document projection | Planned | M4 |
+| SEARCH-002 | Search books and bibliographic metadata | Planned | M4 |
+| SEARCH-003 | Search notes | Planned | M4 |
+| SEARCH-004 | Search bookmarks and tags | Planned | M4 |
+| SEARCH-005 | Global search UI with result-type filters | Planned | M4 |
+| SEARCH-006 | Incremental indexing after scans/note edits | Planned | M4 |
+| SEARCH-007 | Reindex, repair, and failed-document diagnostics | Planned | M4 |
+| SEARCH-008 | Semantic/vector search | Deferred | Post-MVP |
 
----
-
-# Settings
+## Reliability and release
 
 | ID | Feature | Status | Milestone |
-|----|----------|---------|------------|
-| SET-001 | Library Settings | Planned | M1 |
-| SET-002 | Reader Settings | Planned | M2 |
-| SET-003 | Theme | Planned | M2 |
-| SET-004 | OCR Settings | Future | M5 |
-| SET-005 | AI Settings | Future | M6 |
+|---|---|---|---|
+| REL-001 | Debounced filesystem watcher and targeted reconciliation | Planned | M5 |
+| REL-002 | Persistent job recovery after restart | Planned | M5 |
+| REL-003 | Database backup and rebuild workflow | Planned | M5 |
+| REL-004 | Cache cleanup and orphan detection | Planned | M5 |
+| REL-005 | Large-library performance suite | Planned | M5 |
+| REL-006 | Windows installer and upgrade validation | Planned | M5 |
+| REL-007 | Accessibility and keyboard-navigation pass | Planned | M5 |
+| REL-008 | Exportable diagnostic report | Planned | M5 |
 
----
+## Optional intelligence
 
-# Non Goals
+| ID | Feature | Status | Milestone |
+|---|---|---|---|
+| OCR-001 | OCR image pages | Planned | M6 |
+| OCR-002 | OCR scanned PDF pages | Planned | M6 |
+| DICT-001 | Offline Japanese dictionary lookup | Planned | M6 |
+| DICT-002 | Vietnamese meaning and Sino-Vietnamese reading | Planned | M6 |
+| DICT-003 | Kanji lookup | Planned | M6 |
+| DICT-004 | Pitch-accent data | Deferred | Post-MVP |
+| AI-001 | Provider abstraction and secure configuration | Planned | M6 |
+| AI-002 | Explain and translate selected content | Planned | M6 |
+| AI-003 | Summary and note-draft suggestions | Planned | M6 |
+| AI-004 | Flashcard drafting with explicit user acceptance | Planned | M6 |
+| ANKI-001 | Anki-compatible export | Planned | M6 |
+| PLUGIN-001 | Trusted in-process module manifest proof of concept | Planned | M6 |
+| PLUGIN-002 | Untrusted plugin sandbox/marketplace | Deferred | Post-MVP |
 
-The following features are intentionally excluded from the current roadmap.
+## Explicit non-goals for the committed roadmap
 
-- Cloud Sync
-- Multi User
-- Online Account
-- DRM Support
-- Store / Marketplace
-- Social Features
+- hosted web application;
+- online account requirement;
+- Google Drive API integration;
+- multi-user collaboration;
+- DRM circumvention;
+- ebook store or marketplace;
+- social features;
+- in-place modification of PDF annotations;
+- mobile clients.
 
----
+## Status maintenance
 
-# Implementation Order
-
-Foundation
-
-↓
-
-Library
-
-↓
-
-Reader
-
-↓
-
-Bookmarks
-
-↓
-
-Notes
-
-↓
-
-Search
-
-↓
-
-OCR
-
-↓
-
-Dictionary
-
-↓
-
-AI
-
-Each milestone should be independently usable.
-
-The application must remain functional after every milestone.
+- The active sprint may move a `Ready` feature to `In Progress` when a real implementation branch begins.
+- A merged implementation may move to `Completed` only after acceptance criteria and required checks pass.
+- When a milestone changes, update this catalog and the implementation plan in the same pull request.
+- Deferred capabilities need an explicit trigger before returning to `Planned`.

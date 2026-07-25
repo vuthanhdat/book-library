@@ -1,216 +1,288 @@
 # Sprint 01 — Engineering Foundation
 
+## Status
+
+- **State:** Ready
+- **Milestone:** M0 — Engineering foundation
+- **Implementation:** not started
+- **Feature IDs:** ENG-001 through ENG-008
+
 ## Sprint goal
 
-Create a runnable Windows 11 desktop application foundation that enforces the documented architecture and is ready for library initialization work.
+Create a runnable Windows 11 desktop application foundation that proves the documented architecture and is ready for library initialization work.
 
-This sprint should not implement the full scanner or reader. It should remove technical uncertainty and establish stable contracts, migrations, testing, and developer workflow.
+This sprint does not implement a production scanner or reader. It establishes the application shell, domain primitives, SQLite migrations, typed desktop boundary, testing, CI, and the technical evidence needed for later reader/filesystem work.
 
-## Scope
+## Accepted decisions used by this sprint
 
-### 1. Repository and workspace setup
+- SQLite is the local operational database (`ADR-001`).
+- Google Drive Desktop remains external to the app (`ADR-002`).
+- content references use normalized relative paths (`ADR-003`).
+- note text remains Markdown (`ADR-004`).
+- database, caches, thumbnails, and logs live in OS application data (`ADR-005`).
+- core domain/application behavior lives in a Rust modular monolith (`ADR-006`).
+
+Do not reopen these decisions inside implementation tasks without proposing a superseding ADR.
+
+## Work packages
+
+### WP1 — Application scaffold (`ENG-001`, `ENG-002`)
 
 - Scaffold Tauri 2 with React and TypeScript.
-- Configure Tailwind and Shadcn UI.
-- Establish Rust module or workspace structure aligned with:
-  - core domain
-  - application use cases
-  - SQLite infrastructure
-  - filesystem infrastructure
-  - desktop Tauri boundary
-  - React frontend
-- Add `AGENTS.md` with dependency, coding, testing, and documentation rules.
+- Configure the minimum Tailwind CSS and shadcn/ui setup needed for the shell.
+- Create Rust modules:
 
-### 2. Domain foundation
+```text
+src-tauri/src/
+  domain/
+  application/
+  infrastructure/
+  desktop/
+```
 
-Implement initial value objects and enums without infrastructure dependencies:
+- Add an explicit composition root.
+- Keep module exports narrow; no generic shared `utils` package.
+- Document the actual prerequisite and development commands in the README after the scaffold exists.
 
-- `LibraryId`
-- `BookId`
-- `RelativePath`
-- `BookKind`
-- `BookStatus`
-- `ContentFingerprint`
-- common domain errors
+**Acceptance checks**
 
-Required tests:
+- development mode opens a desktop window on Windows 11;
+- production builds compile in CI or a documented Windows environment;
+- React contains no SQLite or direct source-filesystem dependency;
+- `domain` contains no Tauri/infrastructure dependency.
 
-- normalize Windows separators to `/` for persisted values.
-- reject absolute paths.
-- reject path traversal outside the root.
-- preserve Unicode names.
-- support nested folder paths.
+### WP2 — Domain foundation (`ENG-005`)
 
-### 3. Application contracts
+Implement infrastructure-independent primitives:
 
-Define ports and request/response models for:
+- `LibraryId`;
+- `BookId`;
+- `RelativePath`;
+- `BookKind` with `pdf_file` and `image_folder`;
+- `BookStatus` with at least `available`, `missing`, `unsupported`, and `error`;
+- `ContentFingerprint` as a derived change-detection value;
+- common typed domain errors.
 
-- application status
-- library settings
-- database health
-- future `InitializeLibrary` use case
-- progress event envelope
-- cancellation token or job cancellation contract
+`RelativePath` tests must cover:
 
-Only a health/status use case needs a working end-to-end implementation in this sprint.
+- normalizing Windows `\` separators to `/` for persisted values;
+- rejecting drive-letter, UNC, and rooted paths;
+- rejecting paths that escape through `..`;
+- allowing safe nested paths;
+- preserving Unicode names;
+- defining empty path and `.` segment behavior explicitly;
+- stable equality behavior appropriate for the initial Windows target.
 
-### 4. SQLite foundation
+### WP3 — SQLite and application-data foundation (`ENG-004`, `ENG-008`)
 
-- Choose and document SQLite Rust library and migration approach.
-- Determine database location and record the decision in an ADR.
-- Implement connection initialization.
-- Implement migration runner.
-- Add first schema version for:
-  - schema metadata
-  - application settings
-  - libraries
-  - job records or a minimal placeholder if required
-- Enable foreign keys and appropriate journal mode after validating Windows behavior.
-- Add temporary-database integration tests.
+- Select a Rust SQLite library and migration mechanism.
+- Resolve the database path through Tauri OS application-data APIs.
+- Implement connection initialization and a forward-only migration runner.
+- Enable foreign keys for every connection.
+- Validate journal mode and concurrent access behavior on Windows before enabling WAL by default.
+- Add the smallest initial schema needed for:
+  - schema version/history;
+  - application settings;
+  - configured libraries;
+  - optional minimal job envelope only when used by the health flow.
+- Add temporary-database and temporary-app-data integration fixtures.
 
-### 5. Tauri boundary
+**Acceptance checks**
 
-- Add a typed health/status command.
-- Add a typed configuration command to read current app settings.
-- Establish error translation from Rust errors to frontend-safe payloads.
-- Establish event naming conventions for future scan progress.
-- Ensure React has no raw database or filesystem access.
+- first launch creates and migrates the database;
+- later launches do not rerun applied migrations incorrectly;
+- migration failure returns a typed recoverable startup error with diagnostic context;
+- no database/cache file is created inside a selected library fixture;
+- foreign-key behavior is tested.
 
-### 6. Frontend shell
+### WP4 — Application and Tauri boundary (`ENG-003`)
 
-Create the initial layout with placeholders for:
+Implement one complete vertical slice:
 
-- Library
-- Recent
-- Notes
-- Search
-- Settings
+```text
+React -> typed Tauri command -> GetApplicationStatus use case -> health/settings ports -> response
+```
 
-Implement:
+Define:
 
-- startup loading state
-- application health display for development
-- global error boundary
-- empty-state page explaining that a library root has not been configured
+- application status request/response;
+- database health port;
+- current library configuration read model;
+- desktop-safe error envelope with stable code and message;
+- typed event envelope and naming convention for future job progress;
+- cancellation contract shape for future long-running use cases without implementing the scanner.
 
-### 7. Logging and diagnostics
+Tauri commands must only validate/translate/delegate. Domain entities do not need to be serialized directly when a dedicated DTO is safer.
 
-- Structured local logging.
-- Log levels appropriate for development and release.
-- Avoid logging note content, PDF text, or secrets.
-- Add command to reveal or export diagnostic log location later; placeholder is acceptable now.
+### WP5 — Frontend shell (`ENG-001`, `ENG-003`)
 
-### 8. CI and quality gates
+Create the initial application frame with navigation placeholders for:
 
-CI should run:
+- Library;
+- Recent;
+- Notes;
+- Search;
+- Settings.
 
-- Rust format check
-- Rust lint
-- Rust tests
-- TypeScript type check
-- frontend tests if configured
-- frontend build
-- Markdown lint or link validation
+Implement real states for:
+
+- startup loading;
+- healthy application with no configured library;
+- database/configuration startup failure;
+- global React error boundary;
+- development-only health details that do not expose sensitive paths.
+
+Do not build fake catalog, reader, notes, or search behavior.
+
+### WP6 — Logging and diagnostics (`ENG-006`)
+
+- Add structured local logging with development/release levels.
+- Store logs in OS application data.
+- Include operation identifiers and error codes where useful.
+- Do not log note bodies, PDF text, page images, provider secrets, or unnecessary absolute paths.
+- Document where logs are stored and how developers can inspect them.
+- A user-facing export/reveal command is deferred unless trivial after the foundation exists.
+
+### WP7 — CI and quality gates (`ENG-007`)
+
+CI must run the commands actually present in the repository:
+
+- Rust formatting check;
+- Rust lint with warnings treated according to the agreed policy;
+- Rust unit/integration tests;
+- TypeScript type check;
+- frontend tests when configured;
+- frontend production build;
+- Tauri/Rust build validation feasible for the runner environment;
+- Markdown linting or internal-link validation.
+
+The workflow must fail when a required check fails. Do not list checks in documentation that CI does not execute.
 
 ## Technical spikes
 
-Complete these before closing the sprint:
+Complete and document these before closing the sprint.
 
-### Spike A — PDFium packaging
+### Spike A — PDFium on Windows
 
-Produce a short report or ADR covering:
+Evaluate candidate Rust bindings and produce an ADR or technical report covering:
 
-- candidate Rust bindings
-- Windows native DLL packaging
-- development versus installer behavior
-- licensing implications
-- proposed rendered-page transfer strategy to the frontend
+- project maintenance and API suitability;
+- PDFium native binary source and versioning;
+- Windows development and installer packaging;
+- licensing/distribution obligations;
+- proposed page-render transfer to the WebView;
+- a minimal fixture render when feasible.
 
-A complete reader is not required.
+A production reader is out of scope.
 
 ### Spike B — Google Drive Desktop filesystem behavior
 
-Use a small test folder to document:
+Using a disposable synchronized folder, document:
 
-- locally available files
-- online-only placeholders
-- behavior when opening unavailable files
-- watcher event patterns during synchronization
-- recommended handling in scanner status and errors
+- locally available files;
+- online-only/placeholders and availability signals;
+- behavior when opening an unavailable file;
+- create/modify/rename/delete watcher events during synchronization;
+- burst/debounce observations;
+- proposed scanner and user-error behavior.
 
-### Spike C — Database location
+Do not place project database or cache files in the synchronized test folder.
 
-Decide between:
+### Spike C — SQLite implementation choices
 
-- application data directory
-- hidden directory inside library root
+Record the chosen:
 
-Evaluate portability, Google Drive sync conflicts, backups, multi-machine use, and recovery. Record the decision as an ADR.
+- Rust SQLite library;
+- migration mechanism and migration-file organization;
+- connection ownership/pooling model for a desktop app;
+- transaction convention;
+- journal mode after Windows validation;
+- backup/integrity-check path for later milestones.
+
+Database location is already decided by ADR-005.
 
 ## Deliverables
 
-- Runnable Tauri desktop shell.
-- React application shell.
-- Initial Rust architecture.
-- Tested `RelativePath` domain type.
-- Working SQLite migration system.
-- Typed health/status flow from React to Rust and back.
-- CI pipeline.
-- Three spike outcomes documented.
+- runnable Tauri desktop shell;
+- React application frame with honest empty/error states;
+- Rust modular-monolith structure;
+- tested domain primitives, especially `RelativePath`;
+- SQLite application-data initialization and migration system;
+- typed status flow from React through a real use case;
+- structured safe logging;
+- temporary filesystem/database fixtures;
+- CI quality gates;
+- three documented spike outcomes.
 
-## Acceptance criteria
+## End-to-end acceptance criteria
 
 ```gherkin
-Given a clean Windows 11 development machine with prerequisites installed
-When the developer builds and starts the application
-Then the desktop window opens successfully
-And the initial SQLite database is created and migrated
-And the React frontend receives a successful typed health response
-And no frontend module accesses SQLite or the filesystem directly
+Given a clean Windows 11 development environment with documented prerequisites
+When the repository is installed, built, and started using documented commands
+Then the Book Library desktop window opens
+And the initial SQLite database is created in OS application data
+And all migrations are applied exactly once
+And React displays the result of a typed application-status use case
+And the UI shows that no library root is configured
 ```
 
 ```gherkin
-Given an absolute or escaping filesystem path
+Given an absolute, UNC, rooted, or escaping filesystem path
+When the domain attempts to create a persisted RelativePath
+Then validation rejects it with a typed error
+And no invalid value reaches SQLite
+```
+
+```gherkin
+Given a temporary valid nested path containing Unicode characters and Windows separators
 When it is converted to a persisted RelativePath
-Then validation rejects it
-And a user-safe or developer-safe error is returned as appropriate
+Then separators are normalized to `/`
+And safe Unicode path segments are preserved
 ```
 
 ```gherkin
-Given CI runs for the repository
-When formatting, linting, tests, type checking, or build fails
-Then the workflow fails and blocks the change from being considered complete
+Given CI runs for the branch
+When formatting, linting, tests, type checking, link validation, or required builds fail
+Then the workflow fails
+And the feature catalog remains no further than In Progress
 ```
 
 ## Out of scope
 
-- Full library scan.
-- PDF or image rendering.
-- Thumbnail generation.
-- Notes editing.
-- FTS5 user search.
-- OCR or AI integration.
+- production library scanning/discovery;
+- PDF or image rendering UI;
+- thumbnail generation;
+- reading progress and bookmarks;
+- Markdown note editing;
+- FTS5 user search;
+- filesystem watcher implementation beyond the spike;
+- OCR, dictionary, AI, Anki, or plugin implementation.
 
-## Suggested task order
+## Suggested implementation sequence
 
 ```mermaid
 flowchart TD
-    A["Scaffold Tauri and React"] --> B["Define module boundaries"]
-    B --> C["Implement domain value objects"]
-    C --> D["Add SQLite and migrations"]
-    D --> E["Add application health use case"]
+    A["Scaffold Tauri and React"] --> B["Create Rust module boundaries"]
+    B --> C["Implement and test domain primitives"]
+    C --> D["Add app-data SQLite and migrations"]
+    D --> E["Implement application status use case"]
     E --> F["Expose typed Tauri command"]
-    F --> G["Build frontend shell"]
-    G --> H["Add tests and CI"]
-    H --> I["Complete architecture spikes"]
-    I --> J["Review sprint acceptance criteria"]
+    F --> G["Build honest frontend states"]
+    G --> H["Add logging and fixtures"]
+    H --> I["Add CI quality gates"]
+    I --> J["Complete and record spikes"]
+    J --> K["Run clean-checkout acceptance pass"]
 ```
+
+Mechanical scaffold changes, domain behavior, SQLite foundation, and CI may be separate commits or pull requests as long as each leaves the branch buildable and the final acceptance flow is integrated.
 
 ## Definition of done
 
-- Every acceptance criterion passes.
-- New architectural decisions are recorded.
-- Tests cover critical domain and migration behavior.
-- No persisted absolute paths exist.
-- The main branch builds from a clean checkout.
-- Documentation matches the actual scaffold and dependencies.
+- every end-to-end acceptance criterion passes;
+- actual build/test/development commands are documented;
+- critical domain and migration behavior is tested;
+- the app creates no operational artifacts in source folders;
+- no implemented layer violates the accepted dependency direction;
+- spike outcomes are recorded and remaining risks are explicit;
+- feature catalog statuses reflect real merged implementation;
+- documentation matches the final dependencies and repository structure.
