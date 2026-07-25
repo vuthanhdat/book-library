@@ -17,7 +17,7 @@ When documents disagree, follow the authority order in `docs/README.md`.
 
 ## Product invariants
 
-- Desktop first: Windows 11 is the first supported platform.
+- Two required desktop platforms: Windows 11 x64 and macOS Intel x64 must use one shared codebase.
 - Offline first: core library, reader, notes, and search workflows require no Internet access.
 - Filesystem first: source books remain in user-owned folders.
 - Markdown first: user-authored note text remains in `.md` files.
@@ -61,6 +61,15 @@ src-tauri/src/
 
 Use narrow visibility by default. Do not create a generic `utils` module for unrelated helpers. Do not import another feature's private repository or adapter.
 
+## Platform boundaries
+
+- Domain and application code must not branch on Windows versus macOS for business behavior.
+- Platform-specific path resolution, application-data locations, filesystem availability, symlinks, native libraries, dialogs, signing, and packaging belong in `infrastructure` or `desktop`.
+- Keep conditional compilation narrow and do not duplicate use cases or domain models per operating system.
+- Do not assume drive letters, backslashes, case-insensitive filesystems, or Windows-only Unicode behavior.
+- Applicable milestone behavior must be validated on both Windows 11 x64 and a real macOS Intel x64 machine before completion.
+- Apple Silicon support is deferred unless an accepted ADR changes the supported-platform decision.
+
 ## Layer responsibilities
 
 ### Presentation
@@ -103,11 +112,14 @@ Persisted content paths must:
 
 - use `/` as the normalized separator;
 - contain no drive letter or UNC root;
-- contain no leading root separator;
+- contain no Windows or POSIX leading root separator;
 - reject `..` traversal outside the configured root;
-- preserve valid Unicode names.
+- preserve valid Unicode names and spelling;
+- never be normalized by unconditional lowercasing.
 
 An absolute library or notes root is machine-local configuration. It is not a book/note identity and must not leak into persisted content references.
+
+Filesystem adapters must prevent resolved symlinks or equivalent indirections from escaping an authorized root when reading or scanning content.
 
 ## Use cases, events, and jobs
 
@@ -141,9 +153,10 @@ Add the smallest effective test at the owning layer:
 - application tests with fake ports for orchestration;
 - infrastructure integration tests with temporary folders/databases;
 - contract tests for Tauri payloads and error mapping;
-- frontend tests for meaningful interaction behavior.
+- frontend tests for meaningful interaction behavior;
+- platform smoke tests for Windows 11 x64 and macOS Intel x64 when desktop or native behavior changes.
 
-Critical rules such as path normalization, natural image ordering, idempotent discovery, non-destructive scanning, migrations, and progress restoration require tests.
+Critical rules such as path normalization, natural image ordering, idempotent discovery, non-destructive scanning, migrations, progress restoration, and platform-specific native loading require tests.
 
 ## Documentation rules
 
@@ -165,9 +178,10 @@ Verify:
 - the change belongs to the active scope;
 - no accepted ADR is violated;
 - no duplicate use case, repository, path logic, or UI implementation was introduced;
+- no unsupported Windows-only or macOS-only assumption leaked into shared layers;
 - user-owned files remain safe;
-- tests cover critical behavior;
+- tests cover critical behavior on the applicable supported platforms;
 - documentation reflects the actual branch;
 - generated/debug files and secrets are not included.
 
-A feature is complete only when its acceptance criteria pass, relevant tests pass, documentation matches implementation, and recovery/error behavior is handled.
+A feature is complete only when its acceptance criteria pass, relevant tests pass, required platform validation passes, documentation matches implementation, and recovery/error behavior is handled.
