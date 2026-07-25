@@ -1,6 +1,6 @@
 # Book Library
 
-Book Library is a desktop-first, offline-first application for managing and reading a personal collection of PDF books and image-folder books on Windows 11.
+Book Library is a desktop-first, offline-first application for managing and reading a personal collection of PDF books and image-folder books on Windows 11 x64 and macOS Intel x64.
 
 The application treats the user's filesystem as the source of truth. It does not upload books, copy them into a database, or require a cloud account. A folder synchronized by Google Drive Desktop is treated as an ordinary local folder.
 
@@ -22,7 +22,7 @@ OCR, Japanese dictionary lookup, AI assistance, Anki export, additional book for
 
 ## Non-negotiable principles
 
-- **Desktop first:** Windows 11 is the first supported platform.
+- **Two required desktop platforms:** Windows 11 x64 and macOS Intel x64 are supported from the engineering foundation onward through one shared codebase.
 - **Offline first:** daily reading and knowledge workflows work without Internet access.
 - **Filesystem first:** source books remain in user-owned folders.
 - **Relative paths only:** persisted book and note references never contain machine-specific absolute paths.

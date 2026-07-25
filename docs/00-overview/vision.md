@@ -4,33 +4,36 @@ Define the product vision for Book Library: a desktop-first personal reading and
 
 # Background
 
-Book Library exists for a single user who keeps books, papers, manga, notes, and knowledge artifacts in a local folder, commonly synchronized by Google Drive Desktop. The product combines selected strengths of Calibre, Kindle, Obsidian, and Zotero without becoming a cloud service or forcing content into an application-owned silo.
+Book Library exists for a single user who keeps books, papers, manga, notes, and knowledge artifacts in a local folder, commonly synchronized by Google Drive Desktop, and uses both a Windows 11 x64 computer and an Intel-based Mac. The product combines selected strengths of Calibre, Kindle, Obsidian, and Zotero without becoming a cloud service or forcing content into an application-owned silo.
 
 The application must begin as a carefully designed product before implementation. Its documentation should be complete enough for an engineer or AI coding agent to implement features without repeatedly asking architectural questions.
 
 # Requirements
 
-- Provide a desktop application built with Tauri 2, React, TypeScript, Tailwind, and Shadcn UI.
+- Provide one desktop application built with Tauri 2, React, TypeScript, Tailwind, and Shadcn UI.
+- Support Windows 11 x64 and macOS Intel x64 from the same codebase.
 - Work offline without requiring account login, cloud APIs, or hosted services.
-- Use one configurable library root folder as the canonical content location.
+- Use one configurable library root folder as the canonical book-content location.
 - Recognize PDF files and image folders as books.
 - Store metadata, derived indexes, reading state, and search data in SQLite.
 - Never copy book files into the database.
 - Store notes as Markdown files using relative links compatible with Obsidian.
-- Keep all persisted file references relative to the configured library root.
+- Keep persisted book and note file references relative to their configured roots.
 - Keep AI features optional, modular, and replaceable.
-- Favor modular Clean Architecture boundaries over framework-driven coupling.
+- Favor modular Clean Architecture boundaries over framework-driven or operating-system coupling.
 
 # Responsibilities
 
 - Establish a product direction that protects user ownership of files.
 - Define what Book Library is and is not.
 - Guide implementation sequencing across library, reader, notes, search, AI, and plugin capabilities.
-- Keep future contributors aligned around desktop-first and offline-first behavior.
+- Keep future contributors aligned around dual-platform desktop-first and offline-first behavior.
 
 # Architecture
 
 Book Library should be structured as a local-first desktop product with a small trusted core and optional modules around it. The core application owns library discovery, metadata storage, reading state, Markdown note orchestration, and full-text indexing. Optional modules can add OCR, dictionary lookup, AI assistant features, Anki export, or future plugin capabilities.
+
+The same domain and application behavior runs on Windows and macOS Intel. Filesystem behavior, OS application-data locations, PDFium native loading, Google Drive Desktop availability, and packaging differences are isolated behind infrastructure or desktop adapters.
 
 The local filesystem remains the durable source of book truth. SQLite is a local operational database and index cache, not a replacement for the library. If the database is deleted, the app should rebuild core book records by scanning the library root again. User-authored Markdown notes should survive independently of the database.
 
@@ -38,7 +41,10 @@ The local filesystem remains the durable source of book truth. SQLite is a local
 
 ```mermaid
 flowchart TD
-    User["Single desktop user"] --> App["Book Library desktop app"]
+    User["Single desktop user"] --> Windows["Windows 11 x64"]
+    User --> Mac["macOS Intel x64"]
+    Windows --> App["Shared Book Library app"]
+    Mac --> App
     App --> LibraryRoot["Library root folder"]
     App --> SQLite["SQLite metadata and indexes"]
     App --> Notes["Markdown notes"]
@@ -72,10 +78,11 @@ Core entities:
 - Optional AI services for summarization, explanation, OCR correction, and semantic search.
 - Zotero-style citation metadata for academic workflows.
 - Obsidian vault mode where the library notes folder can be opened directly in Obsidian.
+- Apple Silicon and universal macOS builds when they become required targets.
 
 # Open Questions
 
 - Should one application profile support multiple library roots in the first public release or later?
 - Should notes live inside the library root by default or in a configurable sibling vault folder?
 - Should image-folder books be allowed to contain nested chapter folders in the first release?
-- Which PDFium distribution strategy is preferred for Windows packaging?
+- Which PDFium distribution and signing strategy should be used for Windows x64 and macOS Intel x64?

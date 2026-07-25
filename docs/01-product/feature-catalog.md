@@ -23,25 +23,25 @@ Design documents alone never justify `In Progress` or `Completed`.
 
 | Milestone | Outcome |
 |---|---|
-| M0 — Engineering foundation | Runnable Tauri/React/Rust shell, architecture boundaries, SQLite migrations, typed health flow, tests, and CI. |
-| M1 — Library MVP | Configure one root, scan PDFs and image folders, reconcile catalog records, generate thumbnails, and browse the library. |
-| M2 — Reading MVP | Open PDF/image books, navigate, restore progress, and manage bookmarks. |
+| M0 — Engineering foundation | Runnable Windows 11 x64 and macOS Intel x64 Tauri/React/Rust shell, architecture boundaries, SQLite migrations, typed health flow, tests, and CI. |
+| M1 — Library MVP | Configure one root, scan PDFs and image folders, reconcile catalog records, generate thumbnails, and browse the library on both supported platforms. |
+| M2 — Reading MVP | Open PDF/image books, navigate, restore progress, and manage bookmarks on both supported platforms. |
 | M3 — Knowledge MVP | Create portable Markdown notes, associate them with books/locations, and support Obsidian interoperability. |
 | M4 — Search MVP | Search books, notes, bookmarks, tags, and supported extracted text using rebuildable local indexes. |
-| M5 — Reliability and release | Watch/recover/rebuild safely, validate large libraries, package Windows releases, and protect upgrades. |
+| M5 — Reliability and release | Watch/recover/rebuild safely, validate large libraries, package Windows and macOS Intel releases, and protect upgrades. |
 | M6 — Optional intelligence | Add OCR, dictionary, AI, Anki, and plugin experiments without creating core dependencies. |
 
 ## Engineering foundation
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| ENG-001 | Tauri 2 + React + TypeScript application scaffold | Ready | M0 |
+| ENG-001 | Cross-platform Tauri 2 + React + TypeScript application scaffold | Ready | M0 |
 | ENG-002 | Rust modular-monolith structure and dependency boundaries | Ready | M0 |
 | ENG-003 | Typed Tauri command/event contracts | Ready | M0 |
 | ENG-004 | SQLite connection and migration runner | Ready | M0 |
 | ENG-005 | Domain identifiers, `RelativePath`, and common errors | Ready | M0 |
 | ENG-006 | Structured logging and safe diagnostics | Ready | M0 |
-| ENG-007 | Rust/frontend/Markdown CI quality gates | Ready | M0 |
+| ENG-007 | Windows/macOS Rust, frontend, build, and Markdown CI quality gates | Ready | M0 |
 | ENG-008 | Temporary library and SQLite test fixtures | Ready | M0 |
 
 ## Library
@@ -119,7 +119,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 | REL-003 | Database backup and rebuild workflow | Planned | M5 |
 | REL-004 | Cache cleanup and orphan detection | Planned | M5 |
 | REL-005 | Large-library performance suite | Planned | M5 |
-| REL-006 | Windows installer and upgrade validation | Planned | M5 |
+| REL-006 | Windows installer plus macOS Intel app/DMG packaging, signing, and upgrade validation | Planned | M5 |
 | REL-007 | Accessibility and keyboard-navigation pass | Planned | M5 |
 | REL-008 | Exportable diagnostic report | Planned | M5 |
 
@@ -151,7 +151,8 @@ Design documents alone never justify `In Progress` or `Completed`.
 - ebook store or marketplace;
 - social features;
 - in-place modification of PDF annotations;
-- mobile clients.
+- mobile clients;
+- Apple Silicon or universal macOS binaries before an explicit roadmap decision.
 
 ## Status maintenance
 

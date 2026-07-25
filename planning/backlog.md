@@ -28,21 +28,21 @@ Detailed tasks and acceptance criteria are in [Sprint 01](sprint-01.md).
 
 | Backlog item | Feature IDs | Priority | State | Dependency | Outcome |
 |---|---|---|---|---|---|
-| M0-01 Application scaffold | ENG-001 | P0 | Ready | None | Tauri/React/TypeScript app launches on Windows 11. |
-| M0-02 Architecture modules | ENG-002 | P0 | Ready | M0-01 | Rust modular-monolith structure and composition root exist. |
-| M0-03 Domain primitives | ENG-005 | P0 | Ready | M0-02 | Tested IDs, enums, errors, and `RelativePath`. |
-| M0-04 SQLite foundation | ENG-004, ENG-008 | P0 | Ready | M0-02, M0-03 | App-data database, migrations, and temporary fixtures work. |
+| M0-01 Cross-platform application scaffold | ENG-001 | P0 | Ready | None | The same Tauri/React/TypeScript app launches on Windows 11 x64 and macOS Intel x64. |
+| M0-02 Architecture modules | ENG-002 | P0 | Ready | M0-01 | Rust modular-monolith structure and composition root exist without platform-specific domain/application forks. |
+| M0-03 Domain primitives | ENG-005 | P0 | Ready | M0-02 | Tested IDs, enums, errors, and cross-platform `RelativePath`. |
+| M0-04 SQLite foundation | ENG-004, ENG-008 | P0 | Ready | M0-02, M0-03 | OS app-data database, migrations, and temporary fixtures work on both supported platforms. |
 | M0-05 Typed application status | ENG-003 | P0 | Ready | M0-04 | React calls a real use case through a thin typed Tauri command. |
-| M0-06 Honest frontend shell | ENG-001, ENG-003 | P0 | Ready | M0-05 | Loading, healthy/no-library, and startup-error states render. |
-| M0-07 Logging and diagnostics | ENG-006 | P1 | Ready | M0-04 | Safe structured local logs exist in app data. |
-| M0-08 CI quality gates | ENG-007 | P0 | Ready | M0-01–M0-07 | Actual format/lint/test/build/link checks run and fail correctly. |
-| M0-09 Technical spikes | Risk reduction | P0 | Ready | M0-01 | PDFium, Drive Desktop, and SQLite implementation choices are documented. |
+| M0-06 Honest frontend shell | ENG-001, ENG-003 | P0 | Ready | M0-05 | Loading, healthy/no-library, and startup-error states render consistently on both platforms. |
+| M0-07 Logging and diagnostics | ENG-006 | P1 | Ready | M0-04 | Safe structured local logs exist in each OS application-data location. |
+| M0-08 Cross-platform CI quality gates | ENG-007 | P0 | Ready | M0-01–M0-07 | Actual format/lint/test/build/link checks run and fail correctly for compatible Windows and macOS environments. |
+| M0-09 Cross-platform technical spikes | Risk reduction | P0 | Ready | M0-01 | PDFium, Drive Desktop, and SQLite findings are documented for Windows x64 and macOS Intel x64. |
 
 ## M1 — Library MVP backlog
 
 | Backlog item | Feature IDs | Priority | Depends on | Outcome |
 |---|---|---|---|---|
-| M1-01 Configure library | LIB-001 | P0 | M0 | Select, validate, persist, and change one local root. |
+| M1-01 Configure library | LIB-001 | P0 | M0 | Select, validate, persist, and change one local root on either supported platform. |
 | M1-02 Scanner job | LIB-002 | P0 | M1-01 | Recursive scan reports progress, cancellation, warnings, and failures. |
 | M1-03 Candidate discovery | LIB-003, LIB-004 | P0 | M1-02 | PDFs and eligible image folders become deterministic candidates. |
 | M1-04 Catalog reconciliation | LIB-005, LIB-006, LIB-007 | P0 | M1-03 | Repeated scans upsert, preserve user metadata, and mark missing items safely. |
@@ -53,7 +53,8 @@ Detailed tasks and acceptance criteria are in [Sprint 01](sprint-01.md).
 
 Blocking decisions before M1 implementation:
 
-- Windows path uniqueness and case-only rename policy;
+- cross-platform path uniqueness, case-collision, and case-only rename policy;
+- symlink/root-containment policy;
 - stable identity during rename;
 - image-folder eligibility, mixed-content, and nested-chapter policy;
 - thumbnail format and invalidation.
@@ -62,8 +63,8 @@ Blocking decisions before M1 implementation:
 
 | Backlog item | Feature IDs | Priority | Depends on | Outcome |
 |---|---|---|---|---|
-| M2-01 Reader contract | READ-001 | P0 | M1 catalog | Shared lifecycle/location model supports both book kinds. |
-| M2-02 PDF reader | READ-002, READ-004, READ-006, READ-009 | P0 | M0 PDFium spike, M2-01 | PDF open/render/navigation/fit/rotation and error states work. |
+| M2-01 Reader contract | READ-001 | P0 | M1 catalog | Shared lifecycle/location model supports both book kinds and both platforms. |
+| M2-02 PDF reader | READ-002, READ-004, READ-006, READ-009 | P0 | M0 PDFium spike, M2-01 | PDF open/render/navigation/fit/rotation and error states work with native binaries on both targets. |
 | M2-03 Image reader | READ-003, READ-004, READ-005, READ-006, READ-007 | P0 | M1 image ordering, M2-01 | Single/continuous modes lazy-load ordered pages. |
 | M2-04 Reader ergonomics | READ-008 | P1 | M2-02, M2-03 | Fullscreen and keyboard shortcuts work consistently. |
 | M2-05 Reading state | PROG-001, PROG-002, PROG-003 | P0 | M2-01 | Progress saves with debouncing and resumes reliably. |
@@ -77,7 +78,7 @@ Blocking decisions before M1 implementation:
 | M3-02 Markdown file workflow | NOTE-002 | P0 | M3-01 | Create and conservatively edit portable notes. |
 | M3-03 Book/location associations | NOTE-003 | P0 | M2 locations, M3-02 | Notes link to books and reading locations. |
 | M3-04 Markdown projection | NOTE-004, NOTE-005 | P0 | M3-02 | Parse metadata/links into rebuildable SQLite projections. |
-| M3-05 External interoperability | NOTE-006 | P1 | M3-01 | Open notes and folders in normal editors/Obsidian. |
+| M3-05 External interoperability | NOTE-006 | P1 | M3-01 | Open notes and folders in normal editors/Obsidian on both platforms. |
 | M3-06 Backlinks | NOTE-007 | P1 | M3-04 | Resolve and display basic backlinks. |
 | M3-07 External edit reconciliation | NOTE-008 | P1 | M3-04 | External changes update projections without destructive rewrites. |
 
@@ -95,12 +96,12 @@ Blocking decisions before M1 implementation:
 
 | Backlog item | Feature IDs | Priority | Depends on | Outcome |
 |---|---|---|---|---|
-| M5-01 Filesystem reconciliation | REL-001 | P0 | M1 scan policies | Debounced watcher targets affected content and falls back safely. |
+| M5-01 Filesystem reconciliation | REL-001 | P0 | M1 scan policies | Debounced watcher targets affected content and falls back safely on both operating systems. |
 | M5-02 Job recovery | REL-002 | P0 | background job framework | Interrupted work resumes or fails explicitly. |
 | M5-03 Backup and rebuild | REL-003 | P0 | stable schema | Integrity, backup, and rebuild paths protect local state. |
 | M5-04 Cache maintenance | REL-004 | P1 | thumbnails/indexes | Orphans and stale rebuildable artifacts are cleaned safely. |
-| M5-05 Performance suite | REL-005 | P0 | M1–M4 | Measured large-library fixtures define release budgets. |
-| M5-06 Windows delivery | REL-006 | P0 | all core milestones | Installer and upgrades preserve state and launch reliably. |
+| M5-05 Performance suite | REL-005 | P0 | M1–M4 | Measured large-library fixtures define per-platform release budgets. |
+| M5-06 Windows and macOS Intel delivery | REL-006 | P0 | all core milestones | Windows installer and macOS Intel app/DMG packaging, signing, upgrades, and clean-machine launch preserve state. |
 | M5-07 Accessibility | REL-007 | P1 | stable UI | Keyboard and accessibility pass covers core workflows. |
 | M5-08 Diagnostics | REL-008 | P1 | logging/jobs | User can export a privacy-safe diagnostic report. |
 
@@ -126,6 +127,7 @@ The feature catalog records deferred IDs. Current deferred themes include:
 - graph and semantic search;
 - additional ebook/archive formats;
 - hosted/web/mobile clients;
+- Apple Silicon and universal macOS binaries;
 - direct Google Drive API integration;
 - untrusted plugin sandbox or marketplace;
 - in-place PDF annotation modification;
@@ -137,4 +139,4 @@ The feature catalog records deferred IDs. Current deferred themes include:
 - Add detailed acceptance criteria to the active sprint or issue; do not copy full module specifications into this file.
 - Split a slice when it cannot be reviewed or delivered safely as one vertical outcome.
 - Do not move work between milestones without updating the feature catalog and implementation plan in the same change.
-- Do not mark a backlog slice complete while any mapped feature remains unimplemented or required checks fail.
+- Do not mark a backlog slice complete while any mapped feature remains unimplemented or required platform checks fail.

@@ -4,7 +4,7 @@ Capture product requirements for the first architecture-complete version of Book
 
 # Background
 
-The user stores books in a normal folder hierarchy. Categories are represented by folders, not application-managed collections. PDF files are books. Folders containing ordered images are also books, especially for manga and scanned documents. Book Library should index and read these items while leaving files where they are.
+The user stores books in a normal folder hierarchy and uses the application on both Windows 11 x64 and macOS Intel x64. Categories are represented by folders, not application-managed collections. PDF files are books. Folders containing ordered images are also books, especially for manga and scanned documents. Book Library should index and read these items while leaving files where they are.
 
 # Requirements
 
@@ -24,12 +24,15 @@ Functional requirements:
 
 Non-functional requirements:
 
-- Work primarily on Windows desktop.
+- Support Windows 11 x64 and macOS Intel x64 from one Tauri/React/Rust codebase.
+- Validate applicable core milestone outcomes on both supported platforms before marking them complete.
+- Keep domain and application behavior platform-independent; isolate operating-system differences in infrastructure or desktop adapters.
 - Start quickly for existing indexed libraries.
 - Recover from deleted or corrupt SQLite database by rescanning.
 - Handle large libraries incrementally.
 - Avoid destructive filesystem actions.
 - Keep UI responsive during scanning and indexing.
+- Preserve normalized relative path spelling and Unicode; do not use unconditional lowercasing as cross-platform identity.
 
 # Responsibilities
 
@@ -40,7 +43,7 @@ Non-functional requirements:
 
 # Architecture
 
-Requirements map to application use cases: initialize library, discover books, read book, track progress, manage notes, search library, run optional module. Each use case should be callable from Tauri commands and testable independently from React UI.
+Requirements map to application use cases: initialize library, discover books, read book, track progress, manage notes, search library, run optional module. Each use case should be callable from Tauri commands and testable independently from React UI and the current operating system. Platform-specific filesystem, application-data, native PDFium, and packaging behavior must remain behind shared ports.
 
 # Mermaid Diagram
 
@@ -78,10 +81,10 @@ Minimum required tables:
 - Metadata import from ISBN, DOI, BibTeX, or Zotero export.
 - Reading statistics dashboards.
 - Tagging, smart collections, and saved searches.
-- Cross-device metadata conflict resolution when Google Drive Desktop syncs app data.
+- Explicit metadata export or synchronization designed separately from the live SQLite database.
+- Apple Silicon and universal macOS binaries when they become required platforms.
 
 # Open Questions
 
 - Should the first release support editing PDF metadata or only app-local metadata?
 - Should image folder page ordering use natural sort only or allow custom ordering files?
-- Should generated thumbnails live under app data or inside a hidden library folder?
