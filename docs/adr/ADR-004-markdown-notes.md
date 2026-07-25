@@ -1,83 +1,97 @@
-# Purpose
+# ADR-004: Keep user-authored notes in Markdown files
 
-Record the decision to store notes as Markdown files instead of database-only rich text or proprietary documents.
+- **Status:** Accepted
+- **Date:** 2026-07-25
 
-# Background
+## Context
 
-Book Library is a personal knowledge platform, not only a reader. Notes should outlive the app, be editable by external tools, and work naturally with Obsidian. A database-only note system would create lock-in and conflict with local-first principles.
+Book Library is a reading and personal-knowledge application. Notes should outlive the app, remain editable in normal tools, and work with Obsidian-style workflows. A database-only rich-text model would create lock-in and make recovery dependent on application-specific storage.
 
-Decision: user-authored notes are stored as Markdown files. SQLite stores note metadata, links, search projections, and associations only.
+The application still needs fast search, links, associations, and UI projections, but those derived structures do not need to own note text.
 
-# Requirements
+## Decision
 
-- Notes must be readable as plain text.
-- Notes must be stored as `.md` files.
-- Notes must support relative links.
-- Notes must be compatible with Obsidian workflows.
-- SQLite must not be the only copy of user-authored note text.
-- App-generated AI content must be inserted only when accepted by the user.
-- Markdown parsing should preserve user formatting when possible.
+Store user-authored note text as `.md` files. Markdown is canonical for the note body. SQLite stores rebuildable projections, relationships, and search indexes.
 
-# Responsibilities
+Markdown files own:
 
-Markdown files are responsible for:
+- durable note body text;
+- user headings, tags, and human-readable links;
+- user-controlled organization and filenames;
+- optional YAML frontmatter.
 
-- Durable note text.
-- Human-readable knowledge content.
-- Obsidian-compatible links and tags.
-- User-controlled organization.
+SQLite may own:
 
-SQLite is responsible for:
+- discovered note records and fingerprints;
+- parsed titles, headings, tags, and links;
+- book/note and reading-location associations;
+- backlink caches and search projections;
+- indexing/reconciliation job state.
 
-- Note discovery and projections.
-- Search indexing.
-- Book-note associations.
-- Link and backlink caches.
+AI-generated text remains a draft until the user explicitly accepts writing it into a canonical note.
 
-# Architecture
+## Considered options
 
-The notes module treats Markdown as source content and SQLite as a projection. File writes should be conservative. Parsing should update projection tables, not rewrite user notes unnecessarily. Notes may include YAML frontmatter for portable metadata, but app behavior should not depend exclusively on frontmatter.
+### Store notes only in SQLite
 
-# Mermaid Diagram
+Rejected because it prevents normal file ownership, external editing, and straightforward recovery.
+
+### Use a proprietary document format
+
+Rejected because it creates avoidable lock-in and poor interoperability.
+
+### Use Markdown as canonical content with SQLite projections
+
+Accepted because it balances portability with efficient application queries.
+
+## Architecture consequences
 
 ```mermaid
 flowchart LR
-    Markdown["Markdown note files"] --> Parser["Parser"]
-    Parser --> Projection["SQLite note projection"]
-    Projection --> Search["FTS5 search"]
-    Projection --> Links["Backlinks and book links"]
-    BookLibrary["Book Library"] --> Markdown
-    Obsidian["Obsidian"] --> Markdown
-    TextEditor["Text editor"] --> Markdown
+    Markdown["Canonical Markdown files"] --> Parser["Notes infrastructure parser"]
+    Parser --> Projection["SQLite projections"]
+    Projection --> Search["FTS5"]
+    Projection --> Links["Book links and backlinks"]
+    App["Book Library"] --> Markdown
+    Editor["Text editor / Obsidian"] --> Markdown
 ```
 
-# Data Model
+- the notes module reads and writes files through explicit ports;
+- parsing updates SQLite without rewriting user formatting;
+- projection loss is recoverable by rescanning Markdown files;
+- external edits are legitimate and must be reconciled;
+- app behavior must not depend on hidden binary state inside note files.
 
-Markdown remains canonical for:
+## Markdown compatibility baseline
 
-- Note body.
-- User headings.
-- User tags.
-- Human-readable links.
+- CommonMark-compatible Markdown is the baseline;
+- YAML frontmatter is optional;
+- relative Markdown links and Obsidian-style wiki links may be parsed;
+- unsupported syntax should be preserved rather than destructively normalized;
+- writes should be conservative and targeted.
 
-SQLite projections include:
+The exact portable representation of book and reading-location links is decided before M3 implementation.
 
-- `notes.relative_path`.
-- `notes.title`.
-- `note_links`.
-- `note_tags`.
-- `book_note_links`.
-- `search_documents` for note text.
+## Implementation constraints
 
-# Future Extension
+- Persist note references relative to the configured notes root under ADR-003.
+- Never make SQLite the only copy of user-authored note text.
+- Do not rewrite a note merely to refresh a projection or index.
+- Preserve unknown frontmatter keys and formatting whenever an explicit edit is required.
+- Use atomic file-write behavior for app-initiated edits.
+- Detect external changes through fingerprints/watcher reconciliation.
+- Keep generated suggestions visibly distinct until accepted.
 
-- Note templates.
-- Backlink graph.
-- App command to open current note in Obsidian.
-- Markdown-based export of bookmarks, highlights, and AI-generated drafts.
+## Follow-up decisions
 
-# Open Questions
+Before M3 starts, decide:
 
-- Should app-created notes always include YAML frontmatter?
-- Should book-note links be duplicated in both frontmatter and SQLite?
-- Should app edits preserve frontmatter comments and ordering?
+- default notes-root policy and whether it may be outside the library root;
+- internal editor scope versus external-editor-first behavior;
+- whether app-created notes include frontmatter by default;
+- the portable representation of book/location associations;
+- the preservation strategy for frontmatter comments and ordering.
+
+## Revisit when
+
+Revisit Markdown ownership only if a future requirement cannot be represented portably. Any additional format must provide lossless export and cannot make existing Markdown notes second-class.
