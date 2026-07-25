@@ -1,115 +1,200 @@
-# Purpose
+# System Architecture
 
-Define the system architecture for Book Library using a modular Clean Architecture mindset suitable for a Tauri 2 desktop application.
+## Status
 
-# Background
+**Accepted baseline for Sprint 01.** This document defines the implementation boundaries. Detailed behavior belongs in the module specifications, while binding alternatives are recorded in [ADRs](../adr/README.md).
 
-Book Library must combine reading, library management, notes, search, and optional intelligence while staying maintainable for a solo developer and approachable for AI coding agents. The architecture must protect the domain model from UI, database, filesystem, PDFium, and AI-provider details.
+## Goals
 
-# Requirements
+Book Library must remain understandable and safe for a solo developer while combining filesystem discovery, reading, notes, search, and optional intelligence.
 
-- Use Tauri 2 as the desktop shell and native bridge.
-- Use React, TypeScript, Tailwind, and Shadcn UI for the frontend.
-- Use SQLite for local metadata, indexes, jobs, and reading state.
-- Use PDFium through a reader adapter rather than coupling it to the UI.
-- Keep domain rules independent from Tauri commands and React components.
-- Treat the filesystem as a first-class infrastructure adapter.
-- Support optional modules without making the core depend on them.
-- Keep relative paths as domain values.
+The architecture optimizes for:
 
-# Responsibilities
+- Windows 11 desktop operation;
+- offline daily use;
+- user ownership of source books and Markdown notes;
+- recoverable background work;
+- testable domain and application behavior;
+- replaceable SQLite, filesystem, PDFium, OCR, and AI adapters;
+- incremental delivery without premature services or plugin infrastructure.
 
-- Define application layers and dependency direction.
-- Identify stable module boundaries.
-- Provide implementation guidance for commands, events, jobs, and persistence.
-- Establish where validation and invariants belong.
+## Architecture style
 
-# Architecture
+The first implementation is a **Rust modular monolith** inside a Tauri 2 application. React and TypeScript form the presentation layer. Rust owns authoritative domain rules, use cases, filesystem access, SQLite access, jobs, and reader adapters.
 
-Recommended layers:
+The initial Rust structure is:
 
-- Presentation: React screens, components, view models, client-side routing, Shadcn UI composition.
-- Desktop boundary: Tauri commands, Tauri events, native window integration, file picker integration.
-- Application: use cases, job orchestration, module registry, transactional workflows.
-- Domain: entities, value objects, policies, domain errors, interfaces.
-- Infrastructure: SQLite repositories, filesystem scanner, watcher, PDFium adapter, image loader, Markdown adapter, FTS5 indexer, thumbnail generator.
-
-Dependency direction must point inward. Infrastructure implements interfaces defined by the application or domain layer. React must not access SQLite directly. Tauri commands should be thin translators from frontend requests into application use cases.
-
-# Mermaid Diagram
-
-```mermaid
-flowchart TB
-    UI["React + TypeScript UI"] --> Commands["Tauri command boundary"]
-    Commands --> UseCases["Application use cases"]
-    UseCases --> Domain["Domain model and policies"]
-    UseCases --> Ports["Domain/application ports"]
-    SQLite["SQLite repositories"] --> Ports
-    FS["Filesystem scanner and watcher"] --> Ports
-    PDFium["PDFium reader adapter"] --> Ports
-    Markdown["Markdown note adapter"] --> Ports
-    FTS["SQLite FTS5 indexer"] --> Ports
-    Modules["Optional modules"] --> Ports
+```text
+src-tauri/src/
+  domain/          # entities, value objects, policies, domain errors
+  application/     # use cases, ports, transactions, jobs, DTO-independent rules
+  infrastructure/  # SQLite, filesystem, PDFium, Markdown, FTS5, optional providers
+  desktop/         # Tauri commands/events and dependency composition
 ```
 
+Feature-oriented submodules such as `library`, `reader`, `notes`, `search`, and `settings` live inside the owning layer. Do not create a second implementation of a feature in another layer.
+
+See [ADR-006](../adr/ADR-006-rust-modular-monolith.md).
+
+## Dependency direction
+
+Compile-time dependencies point inward:
+
 ```mermaid
-classDiagram
-    class Library {
-        +LibraryId id
-        +RelativePath notesRoot
-        +LibraryState state
-    }
-    class Book {
-        +BookId id
-        +BookKind kind
-        +RelativePath relativePath
-        +Title title
-        +BookStatus status
-    }
-    class ReadingLocation {
-        +BookId bookId
-        +int pageIndex
-        +string anchor
-        +float progress
-    }
-    class Note {
-        +NoteId id
-        +RelativePath relativePath
-        +NoteKind kind
-    }
-    class BookRepository {
-        <<interface>>
-        +save(Book)
-        +findByRelativePath(RelativePath)
-    }
-    Library "1" --> "many" Book
-    Book "1" --> "many" ReadingLocation
-    Book "0..many" --> "0..many" Note
-    BookRepository ..> Book
+flowchart TD
+    Frontend["React presentation"] --> Desktop["desktop: Tauri boundary"]
+    Desktop --> Application["application: use cases and ports"]
+    Application --> Domain["domain: rules and value objects"]
+    Infrastructure["infrastructure: adapters"] --> Application
+    Infrastructure --> Domain
 ```
 
-# Data Model
+Rules:
 
-Core database groups:
+- `domain` never imports Tauri, SQLite, filesystem, PDFium, React, or provider SDKs;
+- `application` coordinates domain behavior and defines the ports it needs;
+- `infrastructure` implements those ports;
+- `desktop` is the composition root and translates Tauri payloads to use-case requests;
+- React never reads SQLite or source folders directly;
+- Tauri commands contain authorization/validation at the boundary, translation, and delegation—not business rules.
 
-- Configuration: `libraries`, `settings`, `module_settings`.
-- Catalog: `books`, `book_files`, `book_metadata`, `contributors`, `book_contributors`.
-- Operations: `scan_jobs`, `scan_issues`, `thumbnail_jobs`, `index_jobs`.
-- Reading: `reading_state`, `reading_history`, `bookmarks`, `highlights`.
-- Notes: `notes`, `note_links`, `book_note_links`.
-- Search: FTS5 virtual tables for books, notes, OCR text, and metadata snippets.
+Runtime call flow travels from UI toward adapters, but that does not reverse source-code dependency direction:
 
-All filesystem references must use relative paths. Runtime services may resolve absolute paths by combining `library_root_absolute_path` from user settings with relative paths, but absolute paths should not be propagated into domain entities unless wrapped in a non-persistable runtime type.
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as React UI
+    participant Command as Tauri command
+    participant UseCase as Application use case
+    participant Port as Application port
+    participant Adapter as Infrastructure adapter
 
-# Future Extension
+    User->>UI: perform action
+    UI->>Command: typed request
+    Command->>UseCase: validated input
+    UseCase->>Port: required operation
+    Adapter-->>Port: implementation
+    Port-->>UseCase: result
+    UseCase-->>Command: use-case response
+    Command-->>UI: safe payload/event
+```
 
-- Background job scheduler with cancellation and persistence.
-- Plugin host process or sandbox model.
-- Sync-safe metadata export files for users who want database-independent recovery.
-- Integration tests using fixture libraries.
+## Module ownership
 
-# Open Questions
+| Module | Owns | Does not own |
+|---|---|---|
+| Library | root configuration, scan/discovery policy, catalog reconciliation, thumbnails | reader rendering, note text, UI state |
+| Reader | reader sessions, page navigation, reading locations, progress, bookmarks | catalog mutation, source-file modification |
+| Notes | Markdown creation/parsing, note projections, links, external-editor integration | proprietary note storage, book scanning |
+| Search | rebuildable search documents, indexing jobs, FTS queries | canonical book or note content |
+| Settings | machine-local configuration and user preferences | domain identities or feature behavior |
+| Optional modules | OCR, dictionary, AI, Anki providers behind ports | mandatory core workflows |
 
-- Should Rust own all application use cases, or should some app logic live in TypeScript?
-- Should the SQLite database be stored in app data or inside the library root?
-- Should optional modules run in-process initially or behind a separate boundary?
+Modules communicate through application use cases, ports, and explicit events. A module must not import another module's private adapter or repository implementation.
+
+## Data ownership
+
+Book Library separates canonical user data from application-owned state.
+
+```mermaid
+flowchart LR
+    LibraryRoot["User library root\nPDFs and image folders"] --> App["Book Library"]
+    NotesRoot["User Markdown notes"] --> App
+    App --> Database["OS app data\nSQLite metadata and state"]
+    App --> Cache["OS app data\nthumbnails and cache"]
+    App --> Logs["OS app data\ndiagnostics"]
+    Drive["Google Drive Desktop"] -. optional sync .-> LibraryRoot
+    Drive -. optional sync .-> NotesRoot
+```
+
+### Canonical data
+
+- PDF files and image folders are owned by the user filesystem.
+- Markdown files are canonical for note text.
+- The application does not rename, move, delete, or rewrite source books unless a future explicit user operation is designed for that purpose.
+
+### Application-owned data
+
+SQLite stores metadata, settings, reading state, job state, relationships, and indexes. Thumbnails, extracted text, and search projections are rebuildable derived artifacts.
+
+The database, caches, and logs live in OS application data, outside the library root. See [ADR-005](../adr/ADR-005-local-application-data.md).
+
+### Path model
+
+- the configured library root is an absolute, machine-local setting;
+- persisted book and page references are normalized paths relative to that root;
+- the configured notes root is an absolute, machine-local setting;
+- persisted note references are normalized paths relative to the notes root;
+- absolute roots are resolved only at infrastructure boundaries;
+- relative paths reject drive letters, leading root separators, and `..` escapes.
+
+## Core execution patterns
+
+### Use cases
+
+Each user action enters through one application use case, such as `InitializeLibrary`, `OpenBook`, `SaveReadingProgress`, `CreateBookNote`, or `SearchLibrary`. Use cases own orchestration and transaction boundaries.
+
+### Background jobs
+
+Scanning, thumbnail generation, indexing, OCR, and other long-running work execute as jobs. Jobs must:
+
+- report typed progress;
+- support cancellation where technically safe;
+- persist enough state for restart recovery when the milestone requires it;
+- isolate failure to the smallest useful unit, such as one candidate or one page;
+- never leave canonical user files partially rewritten.
+
+### Events
+
+Events communicate progress and completed state changes to the UI or other modules. Event names describe facts in past tense, for example `scan-progressed`, `scan-completed`, or `reading-progress-saved`. Events do not replace use-case calls or transactional consistency.
+
+### Errors
+
+Domain and application errors are typed. The desktop boundary maps them to stable, user-safe error codes and messages. Logs may contain technical context but must not include note bodies, extracted book text, API secrets, or unnecessary absolute paths.
+
+## Persistence groups
+
+The schema evolves by milestone. The architecture anticipates these groups without requiring every table in the first migration:
+
+- configuration: application settings and configured libraries;
+- catalog: books, book files, metadata, and scan issues;
+- operations: scan, thumbnail, indexing, and later OCR jobs;
+- reading: current state, history, and bookmarks;
+- notes: file projections and relationships;
+- search: rebuildable search documents and FTS5 tables.
+
+Repositories expose domain/application concepts rather than generic CRUD methods. Migrations are forward-only and accompanied by recovery guidance when user state is affected.
+
+## Initial technology boundaries
+
+- Tauri 2 provides the desktop shell, native dialogs, paths, commands, and events.
+- React and TypeScript provide screens, components, routing, and view state.
+- Rust implements domain, application, and infrastructure behavior.
+- SQLite stores local operational data and FTS5 indexes.
+- PDFium is isolated behind the PDF reader port; the binding and packaging choice requires a Sprint 01 spike and ADR.
+- Markdown parsing and writing are isolated behind notes ports.
+- Google Drive APIs are not integrated; Google Drive Desktop is external to the app.
+
+## Architecture fitness checks
+
+Sprint 01 should establish checks that make the most important rules difficult to violate:
+
+- unit tests for `RelativePath` invariants;
+- integration tests using temporary roots and SQLite databases;
+- a frontend rule forbidding direct filesystem/database packages;
+- Rust visibility that keeps adapter implementations private;
+- CI for formatting, linting, tests, builds, and Markdown links;
+- review checks for new persisted absolute-path fields and destructive file operations.
+
+## Deferred architecture
+
+The following are intentionally deferred until a working core proves the need:
+
+- multiple Rust workspace crates;
+- an external plugin host or sandbox;
+- cloud accounts and metadata synchronization;
+- semantic/vector databases;
+- multi-user or server architecture;
+- additional reader formats beyond PDF and image folders.
+
+A deferred item must not shape core APIs unless required by a current acceptance criterion.
