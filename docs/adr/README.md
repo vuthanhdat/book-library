@@ -19,6 +19,7 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-004](ADR-004-markdown-notes.md) | Accepted | Keep user-authored note text in Markdown; SQLite contains projections only. |
 | [ADR-005](ADR-005-local-application-data.md) | Accepted | Store the database and rebuildable application artifacts in OS application data, outside the library root. |
 | [ADR-006](ADR-006-rust-modular-monolith.md) | Accepted | Keep domain and application behavior in Rust using a modular-monolith structure for the first implementation. |
+| [ADR-007](ADR-007-supported-desktop-platforms.md) | Accepted | Require one shared codebase supporting Windows 11 x64 and macOS Intel x64 from M0. |
 
 ## ADR format
 
