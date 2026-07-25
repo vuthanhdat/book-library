@@ -10,11 +10,11 @@ Book Library must remain understandable and safe for a solo developer while comb
 
 The architecture optimizes for:
 
-- Windows 11 desktop operation;
+- Windows 11 x64 and macOS Intel x64 desktop operation from one codebase;
 - offline daily use;
 - user ownership of source books and Markdown notes;
 - recoverable background work;
-- testable domain and application behavior;
+- testable domain and application behavior independent of the host operating system;
 - replaceable SQLite, filesystem, PDFium, OCR, and AI adapters;
 - incremental delivery without premature services or plugin infrastructure.
 
@@ -35,6 +35,25 @@ src-tauri/src/
 Feature-oriented submodules such as `library`, `reader`, `notes`, `search`, and `settings` live inside the owning layer. Do not create a second implementation of a feature in another layer.
 
 See [ADR-006](../adr/ADR-006-rust-modular-monolith.md).
+
+## Supported platforms and portability boundaries
+
+Windows 11 x64 and macOS Intel x64 are required platforms from M0. They share one React frontend and one Rust domain/application implementation. See [ADR-007](../adr/ADR-007-supported-desktop-platforms.md).
+
+Platform-specific behavior is allowed only where the operating system or native dependency actually requires it:
+
+- filesystem availability, symlink resolution, watcher behavior, case handling, and Unicode behavior;
+- OS application-data and secure-storage locations;
+- native file dialogs and reveal/open operations;
+- PDFium native binary loading and packaging;
+- Google Drive Desktop placeholder and hydration behavior;
+- installer, signing, notarization, and release packaging.
+
+These differences belong in `infrastructure` or `desktop` adapters behind shared application ports. Domain and application modules must not branch on operating-system names to decide business behavior.
+
+Persisted relative paths preserve normalized spelling and Unicode and use `/` separators. The domain must not force lowercase identity. Filesystem-specific comparison and collision detection are adapter policies because case sensitivity may vary by platform and volume.
+
+Apple Silicon and universal macOS binaries are deferred. Supporting them later must not require a second domain model, application layer, or product repository.
 
 ## Dependency direction
 
@@ -126,7 +145,9 @@ The database, caches, and logs live in OS application data, outside the library 
 - the configured notes root is an absolute, machine-local setting;
 - persisted note references are normalized paths relative to the notes root;
 - absolute roots are resolved only at infrastructure boundaries;
-- relative paths reject drive letters, leading root separators, and `..` escapes.
+- relative paths reject drive letters, UNC roots, Windows/POSIX leading root separators, and `..` escapes;
+- normalized relative paths preserve spelling and Unicode and are not unconditionally lowercased;
+- filesystem adapters enforce root containment after symlink or equivalent path resolution.
 
 ## Core execution patterns
 
@@ -167,24 +188,25 @@ Repositories expose domain/application concepts rather than generic CRUD methods
 
 ## Initial technology boundaries
 
-- Tauri 2 provides the desktop shell, native dialogs, paths, commands, and events.
+- Tauri 2 provides the desktop shell, native dialogs, paths, commands, and events on both supported platforms.
 - React and TypeScript provide screens, components, routing, and view state.
-- Rust implements domain, application, and infrastructure behavior.
-- SQLite stores local operational data and FTS5 indexes.
-- PDFium is isolated behind the PDF reader port; the binding and packaging choice requires a Sprint 01 spike and ADR.
+- Rust implements shared domain, application, and infrastructure contracts.
+- SQLite stores local operational data and FTS5 indexes through OS-specific application-data locations.
+- PDFium is isolated behind the PDF reader port; the binding and native packaging choice requires a Sprint 01 spike covering Windows x64 and macOS Intel x64.
 - Markdown parsing and writing are isolated behind notes ports.
-- Google Drive APIs are not integrated; Google Drive Desktop is external to the app.
+- Google Drive APIs are not integrated; Google Drive Desktop is external to the app and must be observed separately on both platforms.
 
 ## Architecture fitness checks
 
 Sprint 01 should establish checks that make the most important rules difficult to violate:
 
-- unit tests for `RelativePath` invariants;
+- unit tests for `RelativePath` invariants across Windows-style and POSIX-style inputs;
 - integration tests using temporary roots and SQLite databases;
 - a frontend rule forbidding direct filesystem/database packages;
 - Rust visibility that keeps adapter implementations private;
-- CI for formatting, linting, tests, builds, and Markdown links;
-- review checks for new persisted absolute-path fields and destructive file operations.
+- CI for formatting, linting, tests, builds, and Markdown links on supported environments;
+- real Windows 11 x64 and macOS Intel x64 smoke evidence for desktop/native changes;
+- review checks for new persisted absolute-path fields, unconditional path lowercasing, and destructive file operations.
 
 ## Deferred architecture
 
@@ -195,6 +217,7 @@ The following are intentionally deferred until a working core proves the need:
 - cloud accounts and metadata synchronization;
 - semantic/vector databases;
 - multi-user or server architecture;
+- Apple Silicon and universal macOS release targets;
 - additional reader formats beyond PDF and image folders.
 
 A deferred item must not shape core APIs unless required by a current acceptance criterion.
