@@ -15,6 +15,8 @@ Scanning finds filesystem candidates. Discovery decides what those candidates me
 - Update existing records when fingerprints change.
 - Mark missing records when files disappear instead of deleting history immediately.
 - Preserve user-edited metadata when rediscovering a book.
+- Allow a user to replace the app-local display title without renaming the
+  source; later scans preserve titles whose source is `user`.
 - Generate follow-up jobs for thumbnails, FTS indexing, and optional OCR.
 
 # Responsibilities

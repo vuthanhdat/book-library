@@ -9,15 +9,45 @@ use thiserror::Error;
 
 use crate::{
     application::{
-        ApplicationError, BookListItem, BookLocationRepository, BookSourceLocation,
-        CatalogReconciliation, DatabaseHealth, DiscoveredBook, LibraryConfiguration,
-        LibraryConfigurationState, LibraryError, LibraryRepository, ScanReason, ScanResult,
-        ScanSummary, SourceLocationError, ThumbnailOutcome,
+        ApplicationError, BookDetailError, BookDetailRecord, BookDetailRepository, BookListItem,
+        BookLocationRepository, BookMetadataError, BookMetadataRepository, BookRelocationError,
+        BookRelocationRepository, BookSourceLocation, BookThumbnailTarget, CatalogReconciliation,
+        DatabaseHealth, DiscoveredBook, LibraryConfiguration, LibraryConfigurationState,
+        LibraryError, LibraryRepository, LinkedBookNote, NoteBacklink, NoteDetail, NoteListItem,
+        NoteProjection, NoteRecord, NotesConfiguration, NotesError, NotesRefreshSummary,
+        NotesRepository, ScanReason, ScanResult, ScanSummary, SearchDiagnostics, SearchDocument,
+        SearchError, SearchRebuildSummary, SearchRepository, SearchResultItem, SourceLocationError,
+        ThumbnailOutcome,
     },
-    domain::{BookId, BookKind, BookStatus, LibraryId, RelativePath},
+    domain::{BookId, BookKind, BookStatus, ContentFingerprint, LibraryId, NoteId, RelativePath},
 };
 
 const DATABASE_FILENAME: &str = "book-library.sqlite3";
+
+type BookDetailRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+    String,
+    String,
+);
+
+type BookThumbnailRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+);
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
     (
@@ -102,6 +132,110 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
             status TEXT NOT NULL,
             error_code TEXT,
             generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+    "#,
+    ),
+    (
+        3,
+        "markdown_notes",
+        r#"
+        CREATE TABLE configured_notes_root (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            root_path TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE notes (
+            id TEXT PRIMARY KEY NOT NULL,
+            relative_path TEXT NOT NULL,
+            path_key TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            status TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            modified_at_ms INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE book_note_links (
+            note_id TEXT PRIMARY KEY NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            relation_kind TEXT NOT NULL DEFAULT 'about'
+        ) STRICT;
+
+        CREATE TABLE note_headings (
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            heading_index INTEGER NOT NULL,
+            level INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            PRIMARY KEY(note_id, heading_index)
+        ) STRICT;
+
+        CREATE TABLE note_tags (
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            tag TEXT NOT NULL,
+            PRIMARY KEY(note_id, tag)
+        ) STRICT;
+
+        CREATE TABLE note_links (
+            source_note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            link_index INTEGER NOT NULL,
+            target_ref TEXT NOT NULL,
+            link_text TEXT NOT NULL,
+            resolved_note_id TEXT REFERENCES notes(id) ON DELETE SET NULL,
+            PRIMARY KEY(source_note_id, link_index)
+        ) STRICT;
+    "#,
+    ),
+    (
+        4,
+        "offline_full_text_search",
+        r#"
+        CREATE VIRTUAL TABLE search_documents_fts USING fts5(
+            source_kind UNINDEXED,
+            source_id UNINDEXED,
+            scope UNINDEXED,
+            title,
+            body,
+            relative_path,
+            status UNINDEXED,
+            tokenize = 'trigram case_sensitive 0 remove_diacritics 1'
+        );
+
+        CREATE TABLE search_index_runs (
+            id TEXT PRIMARY KEY NOT NULL,
+            status TEXT NOT NULL,
+            indexed_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finished_at TEXT
+        ) STRICT;
+
+        CREATE TABLE search_index_jobs (
+            id TEXT PRIMARY KEY NOT NULL,
+            status TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error_code TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+    "#,
+    ),
+    (
+        5,
+        "book_detail_metadata",
+        r#"
+        CREATE TABLE book_user_state (
+            book_id TEXT PRIMARY KEY NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            reading_status TEXT NOT NULL DEFAULT 'unread',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE book_tags (
+            book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            tag TEXT NOT NULL,
+            PRIMARY KEY(book_id, tag)
         ) STRICT;
     "#,
     ),
@@ -297,6 +431,158 @@ impl SqliteDatabase {
             *added += 1;
             Ok((id, book.status == BookStatus::Available))
         }
+    }
+
+    fn upsert_note_projection(
+        transaction: &rusqlite::Transaction<'_>,
+        note: &NoteProjection,
+    ) -> Result<NoteId, NotesError> {
+        let existing_id: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM notes WHERE path_key = ?1",
+                [note.path_key.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let note_id = existing_id
+            .as_deref()
+            .map(NoteId::parse)
+            .transpose()
+            .map_err(|_| NotesError::RepositoryFailed)?
+            .unwrap_or_else(NoteId::new);
+        transaction
+            .execute(
+                "INSERT INTO notes
+                 (id, relative_path, path_key, title, fingerprint, status,
+                  size_bytes, modified_at_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'available', ?6, ?7)
+                 ON CONFLICT(path_key) DO UPDATE SET
+                   relative_path = excluded.relative_path,
+                   title = excluded.title,
+                   fingerprint = excluded.fingerprint,
+                   status = 'available',
+                   size_bytes = excluded.size_bytes,
+                   modified_at_ms = excluded.modified_at_ms,
+                   updated_at = CURRENT_TIMESTAMP",
+                params![
+                    note_id.to_string(),
+                    note.relative_path.as_str(),
+                    note.path_key,
+                    note.title,
+                    note.fingerprint,
+                    i64::try_from(note.size_bytes).unwrap_or(i64::MAX),
+                    note.modified_at_ms
+                ],
+            )
+            .map_err(|_| NotesError::RepositoryFailed)?;
+
+        for table in [
+            "book_note_links",
+            "note_headings",
+            "note_tags",
+            "note_links",
+        ] {
+            transaction
+                .execute(
+                    &format!(
+                        "DELETE FROM {table} WHERE {}",
+                        if table == "book_note_links"
+                            || table == "note_headings"
+                            || table == "note_tags"
+                        {
+                            "note_id = ?1"
+                        } else {
+                            "source_note_id = ?1"
+                        }
+                    ),
+                    [note_id.to_string()],
+                )
+                .map_err(|_| NotesError::RepositoryFailed)?;
+        }
+        if let Some(book_path) = &note.book_relative_path {
+            let path_key = if cfg!(target_os = "windows") {
+                book_path.as_str().to_lowercase()
+            } else {
+                book_path.as_str().to_owned()
+            };
+            if let Some(book_id) = transaction
+                .query_row(
+                    "SELECT id FROM books WHERE path_key = ?1 LIMIT 1",
+                    [path_key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|_| NotesError::RepositoryFailed)?
+            {
+                transaction
+                    .execute(
+                        "INSERT INTO book_note_links (note_id, book_id)
+                         VALUES (?1, ?2)",
+                        params![note_id.to_string(), book_id],
+                    )
+                    .map_err(|_| NotesError::RepositoryFailed)?;
+            }
+        }
+        for (index, heading) in note.headings.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO note_headings
+                     (note_id, heading_index, level, text) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        note_id.to_string(),
+                        i64::try_from(index).unwrap_or(i64::MAX),
+                        i64::from(heading.level),
+                        heading.text
+                    ],
+                )
+                .map_err(|_| NotesError::RepositoryFailed)?;
+        }
+        for tag in &note.tags {
+            transaction
+                .execute(
+                    "INSERT INTO note_tags (note_id, tag) VALUES (?1, ?2)",
+                    params![note_id.to_string(), tag],
+                )
+                .map_err(|_| NotesError::RepositoryFailed)?;
+        }
+        for (index, link) in note.links.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO note_links
+                     (source_note_id, link_index, target_ref, link_text)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        note_id.to_string(),
+                        i64::try_from(index).unwrap_or(i64::MAX),
+                        link.target_ref,
+                        link.link_text
+                    ],
+                )
+                .map_err(|_| NotesError::RepositoryFailed)?;
+        }
+        Ok(note_id)
+    }
+
+    fn resolve_note_links(transaction: &rusqlite::Transaction<'_>) -> Result<(), NotesError> {
+        transaction
+            .execute(
+                "UPDATE note_links
+                 SET resolved_note_id = (
+                   SELECT notes.id FROM notes
+                   WHERE notes.status = 'available'
+                     AND (
+                       lower(notes.title) = lower(note_links.target_ref)
+                       OR lower(notes.relative_path) = lower(note_links.target_ref)
+                       OR lower(substr(notes.relative_path, 1, length(notes.relative_path) - 3))
+                          = lower(replace(note_links.target_ref, '.md', ''))
+                     )
+                   LIMIT 1
+                 )",
+                [],
+            )
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        Ok(())
     }
 }
 
@@ -550,8 +836,8 @@ impl LibraryRepository for SqliteDatabase {
             )
             .and_then(|_| {
                 connection.execute(
-                    "UPDATE books SET thumbnail_cache_path = ?1, thumbnail_status = 'ready'
-                     , page_count = COALESCE(?2, page_count) WHERE id = ?3",
+                    "UPDATE books SET thumbnail_cache_path = ?1, thumbnail_status = 'ready',
+                     status = 'available', page_count = COALESCE(?2, page_count) WHERE id = ?3",
                     params![
                         outcome.cache_relative_path,
                         outcome.page_count,
@@ -661,8 +947,9 @@ impl LibraryRepository for SqliteDatabase {
             .map_err(|_| LibraryError::CatalogFailed)?;
         connection
             .execute(
-                "UPDATE books SET thumbnail_status = 'pending', thumbnail_cache_path = NULL
-                 WHERE status = 'available'",
+                "UPDATE books SET thumbnail_status = 'pending'
+                 WHERE status = 'available'
+                   AND (thumbnail_cache_path IS NULL OR thumbnail_status <> 'ready')",
                 [],
             )
             .map_err(|_| LibraryError::CatalogFailed)?;
@@ -731,16 +1018,937 @@ impl BookLocationRepository for SqliteDatabase {
     }
 }
 
+impl BookMetadataRepository for SqliteDatabase {
+    fn update_display_title(
+        &self,
+        book_id: BookId,
+        title: &str,
+    ) -> Result<bool, BookMetadataError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookMetadataError::RepositoryFailed)?;
+        let updated = connection
+            .execute(
+                "UPDATE books
+                 SET title = ?1, title_source = 'user', updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?2",
+                params![title, book_id.to_string()],
+            )
+            .map_err(|_| BookMetadataError::RepositoryFailed)?;
+        Ok(updated == 1)
+    }
+}
+
+impl BookDetailRepository for SqliteDatabase {
+    fn book_detail(&self, book_id: BookId) -> Result<Option<BookDetailRecord>, BookDetailError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let base: Option<BookDetailRow> = connection
+            .query_row(
+                "SELECT books.title, books.kind, books.relative_path, books.status,
+                        books.page_count, books.size_bytes, books.modified_at_ms,
+                        books.thumbnail_cache_path, books.thumbnail_status,
+                        COALESCE(book_user_state.reading_status, 'unread')
+                 FROM books
+                 LEFT JOIN book_user_state ON book_user_state.book_id = books.id
+                 WHERE books.id = ?1",
+                [book_id.to_string()],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let Some((
+            title,
+            kind,
+            relative_path,
+            status,
+            page_count,
+            size_bytes,
+            modified_at_ms,
+            thumbnail_cache_path,
+            thumbnail_status,
+            reading_status,
+        )) = base
+        else {
+            return Ok(None);
+        };
+        let mut tag_statement = connection
+            .prepare("SELECT tag FROM book_tags WHERE book_id = ?1 ORDER BY tag COLLATE NOCASE")
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let tags = tag_statement
+            .query_map([book_id.to_string()], |row| row.get(0))
+            .map_err(|_| BookDetailError::RepositoryFailed)?
+            .collect::<Result<Vec<String>, _>>()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let mut note_statement = connection
+            .prepare(
+                "SELECT notes.id, notes.title
+                 FROM book_note_links
+                 JOIN notes ON notes.id = book_note_links.note_id
+                 WHERE book_note_links.book_id = ?1 AND notes.status = 'available'
+                 ORDER BY notes.title COLLATE NOCASE",
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let notes = note_statement
+            .query_map([book_id.to_string()], |row| {
+                Ok(LinkedBookNote {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                })
+            })
+            .map_err(|_| BookDetailError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        Ok(Some(BookDetailRecord {
+            id: book_id.to_string(),
+            title,
+            kind,
+            relative_path,
+            status,
+            page_count: page_count.and_then(|value| u32::try_from(value).ok()),
+            size_bytes: size_bytes.and_then(|value| u64::try_from(value).ok()),
+            modified_at_ms,
+            thumbnail_cache_path,
+            thumbnail_status,
+            reading_status,
+            tags,
+            notes,
+        }))
+    }
+
+    fn update_book_detail(
+        &self,
+        book_id: BookId,
+        reading_status: &str,
+        tags: &[String],
+    ) -> Result<bool, BookDetailError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let exists: bool = transaction
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM books WHERE id = ?1)",
+                [book_id.to_string()],
+                |row| row.get(0),
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        if !exists {
+            return Ok(false);
+        }
+        transaction
+            .execute(
+                "INSERT INTO book_user_state (book_id, reading_status)
+                 VALUES (?1, ?2)
+                 ON CONFLICT(book_id) DO UPDATE SET
+                   reading_status = excluded.reading_status,
+                   updated_at = CURRENT_TIMESTAMP",
+                params![book_id.to_string(), reading_status],
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        transaction
+            .execute(
+                "DELETE FROM book_tags WHERE book_id = ?1",
+                [book_id.to_string()],
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        for tag in tags {
+            transaction
+                .execute(
+                    "INSERT INTO book_tags (book_id, tag) VALUES (?1, ?2)",
+                    params![book_id.to_string(), tag],
+                )
+                .map_err(|_| BookDetailError::RepositoryFailed)?;
+        }
+        transaction
+            .commit()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        Ok(true)
+    }
+
+    fn book_thumbnail_target(
+        &self,
+        book_id: BookId,
+    ) -> Result<Option<BookThumbnailTarget>, BookDetailError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let base: Option<BookThumbnailRow> = connection
+            .query_row(
+                "SELECT configured_libraries.root_path, books.kind, books.status,
+                        books.relative_path, books.path_key, books.title, books.size_bytes,
+                        books.modified_at_ms, books.page_count
+                 FROM books
+                 JOIN configured_libraries ON configured_libraries.id = books.library_id
+                 WHERE books.id = ?1",
+                [book_id.to_string()],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let Some((
+            root,
+            kind,
+            status,
+            relative_path,
+            path_key,
+            title,
+            size_bytes,
+            modified_at_ms,
+            page_count,
+        )) = base
+        else {
+            return Ok(None);
+        };
+        let fingerprint: String = connection
+            .query_row(
+                "SELECT fingerprint FROM books WHERE id = ?1",
+                [book_id.to_string()],
+                |row| row.get(0),
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let kind = match kind.as_str() {
+            "pdf_file" => BookKind::PdfFile,
+            "image_folder" => BookKind::ImageFolder,
+            _ => return Err(BookDetailError::RepositoryFailed),
+        };
+        let status = match status.as_str() {
+            "available" => BookStatus::Available,
+            "unavailable" => BookStatus::Unavailable,
+            "missing" => BookStatus::Missing,
+            "unsupported" => BookStatus::Unsupported,
+            "error" => BookStatus::Error,
+            _ => return Err(BookDetailError::RepositoryFailed),
+        };
+        let mut page_statement = connection
+            .prepare(
+                "SELECT relative_path FROM image_pages
+                 WHERE book_id = ?1 ORDER BY page_index",
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let image_pages = page_statement
+            .query_map([book_id.to_string()], |row| row.get::<_, String>(0))
+            .map_err(|_| BookDetailError::RepositoryFailed)?
+            .map(|value| {
+                value
+                    .map_err(|_| BookDetailError::RepositoryFailed)
+                    .and_then(|path| {
+                        RelativePath::new(path).map_err(|_| BookDetailError::RepositoryFailed)
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(BookThumbnailTarget {
+            root: PathBuf::from(root),
+            book: DiscoveredBook {
+                kind,
+                status,
+                relative_path: RelativePath::new(relative_path)
+                    .map_err(|_| BookDetailError::RepositoryFailed)?,
+                path_key,
+                title,
+                fingerprint: ContentFingerprint::new(fingerprint)
+                    .map_err(|_| BookDetailError::RepositoryFailed)?,
+                size_bytes: size_bytes.and_then(|value| u64::try_from(value).ok()),
+                modified_at_ms,
+                page_count: page_count.and_then(|value| u32::try_from(value).ok()),
+                image_pages,
+            },
+        }))
+    }
+}
+
+impl BookRelocationRepository for SqliteDatabase {
+    fn relocation_source(
+        &self,
+        book_id: BookId,
+    ) -> Result<Option<BookSourceLocation>, BookRelocationError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookRelocationError::RepositoryFailed)?;
+        let source: Option<(String, String, String, String)> = connection
+            .query_row(
+                "SELECT configured_libraries.root_path, books.kind,
+                        books.relative_path, books.status
+                 FROM books
+                 JOIN configured_libraries ON configured_libraries.id = books.library_id
+                 WHERE books.id = ?1",
+                [book_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|_| BookRelocationError::RepositoryFailed)?;
+        source
+            .map(|(root, kind, relative_path, status)| {
+                let kind = match kind.as_str() {
+                    "pdf_file" => BookKind::PdfFile,
+                    "image_folder" => BookKind::ImageFolder,
+                    _ => return Err(BookRelocationError::RepositoryFailed),
+                };
+                Ok(BookSourceLocation {
+                    library_root: PathBuf::from(root),
+                    kind,
+                    relative_path: RelativePath::new(relative_path)
+                        .map_err(|_| BookRelocationError::RepositoryFailed)?,
+                    status,
+                })
+            })
+            .transpose()
+    }
+
+    fn update_source_path(
+        &self,
+        book_id: BookId,
+        relative_path: &RelativePath,
+        path_key: &str,
+    ) -> Result<(), BookRelocationError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookRelocationError::RepositoryFailed)?;
+        let result = connection.execute(
+            "UPDATE books
+             SET relative_path = ?1, path_key = ?2, status = 'available',
+                 thumbnail_status = 'pending', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?3",
+            params![relative_path.as_str(), path_key, book_id.to_string()],
+        );
+        match result {
+            Ok(1) => Ok(()),
+            Ok(_) => Err(BookRelocationError::BookNotFound),
+            Err(rusqlite::Error::SqliteFailure(error, _))
+                if error.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                Err(BookRelocationError::PathConflict)
+            }
+            Err(_) => Err(BookRelocationError::RepositoryFailed),
+        }
+    }
+}
+
+impl NotesRepository for SqliteDatabase {
+    fn save_notes_configuration(&self, root: &Path) -> Result<NotesConfiguration, NotesError> {
+        let root_text = root.to_str().ok_or(NotesError::RootInvalid)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        connection
+            .execute(
+                "INSERT INTO configured_notes_root (id, root_path)
+                 VALUES (1, ?1)
+                 ON CONFLICT(id) DO UPDATE SET
+                   root_path = excluded.root_path,
+                   updated_at = CURRENT_TIMESTAMP",
+                [root_text],
+            )
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        Ok(NotesConfiguration {
+            root: root.to_path_buf(),
+            display_name: root
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("Notes")
+                .to_owned(),
+        })
+    }
+
+    fn notes_configuration(&self) -> Result<Option<NotesConfiguration>, NotesError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let root: Option<String> = connection
+            .query_row(
+                "SELECT root_path FROM configured_notes_root WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        Ok(root.map(|value| {
+            let root = PathBuf::from(value);
+            NotesConfiguration {
+                display_name: root
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("Notes")
+                    .to_owned(),
+                root,
+            }
+        }))
+    }
+
+    fn reconcile_notes(
+        &self,
+        notes: &[NoteProjection],
+        issues: u64,
+    ) -> Result<NotesRefreshSummary, NotesError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let mut added = 0;
+        let mut updated = 0;
+        let mut seen = std::collections::HashSet::new();
+        for note in notes {
+            seen.insert(note.path_key.clone());
+            let previous: Option<(String, String)> = transaction
+                .query_row(
+                    "SELECT fingerprint, status FROM notes WHERE path_key = ?1",
+                    [note.path_key.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|_| NotesError::RepositoryFailed)?;
+            match previous {
+                None => added += 1,
+                Some((fingerprint, status))
+                    if fingerprint != note.fingerprint || status != "available" =>
+                {
+                    updated += 1;
+                }
+                Some(_) => {}
+            }
+            Self::upsert_note_projection(&transaction, note)?;
+        }
+        let known = {
+            let mut statement = transaction
+                .prepare("SELECT path_key FROM notes WHERE status <> 'missing'")
+                .map_err(|_| NotesError::RepositoryFailed)?;
+            statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|_| NotesError::RepositoryFailed)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| NotesError::RepositoryFailed)?
+        };
+        let mut missing = 0;
+        for path_key in known {
+            if !seen.contains(&path_key) {
+                missing += transaction
+                    .execute(
+                        "UPDATE notes SET status = 'missing', updated_at = CURRENT_TIMESTAMP
+                         WHERE path_key = ?1",
+                        [path_key],
+                    )
+                    .map_err(|_| NotesError::RepositoryFailed)? as u64;
+            }
+        }
+        Self::resolve_note_links(&transaction)?;
+        transaction
+            .commit()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        Ok(NotesRefreshSummary {
+            discovered: notes.len() as u64,
+            added,
+            updated,
+            missing,
+            issues,
+        })
+    }
+
+    fn upsert_note(&self, note: &NoteProjection) -> Result<NoteId, NotesError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let note_id = Self::upsert_note_projection(&transaction, note)?;
+        Self::resolve_note_links(&transaction)?;
+        transaction
+            .commit()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        Ok(note_id)
+    }
+
+    fn note_record(&self, note_id: NoteId) -> Result<Option<NoteRecord>, NotesError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let record: Option<(String, String)> = connection
+            .query_row(
+                "SELECT relative_path, status FROM notes WHERE id = ?1",
+                [note_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        record
+            .map(|(relative_path, status)| {
+                Ok(NoteRecord {
+                    relative_path: RelativePath::new(relative_path)
+                        .map_err(|_| NotesError::RepositoryFailed)?,
+                    status,
+                })
+            })
+            .transpose()
+    }
+
+    fn book_relative_path(&self, book_id: BookId) -> Result<Option<RelativePath>, NotesError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let path: Option<String> = connection
+            .query_row(
+                "SELECT relative_path FROM books WHERE id = ?1",
+                [book_id.to_string()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        path.map(|value| RelativePath::new(value).map_err(|_| NotesError::RepositoryFailed))
+            .transpose()
+    }
+
+    fn list_notes(&self) -> Result<Vec<NoteListItem>, NotesError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT notes.id, notes.title, notes.relative_path, notes.status,
+                        books.id, books.title, notes.modified_at_ms
+                 FROM notes
+                 LEFT JOIN book_note_links ON book_note_links.note_id = notes.id
+                 LEFT JOIN books ON books.id = book_note_links.book_id
+                 ORDER BY notes.title COLLATE NOCASE, notes.relative_path",
+            )
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        statement
+            .query_map([], |row| {
+                Ok(NoteListItem {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    relative_path: row.get(2)?,
+                    status: row.get(3)?,
+                    book_id: row.get(4)?,
+                    book_title: row.get(5)?,
+                    modified_at_ms: row.get(6)?,
+                })
+            })
+            .map_err(|_| NotesError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| NotesError::RepositoryFailed)
+    }
+
+    fn note_detail_projection(
+        &self,
+        note_id: NoteId,
+        body: String,
+    ) -> Result<Option<NoteDetail>, NotesError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let base: Option<(String, String, Option<String>, Option<String>)> = connection
+            .query_row(
+                "SELECT notes.title, notes.relative_path, books.id, books.title
+                 FROM notes
+                 LEFT JOIN book_note_links ON book_note_links.note_id = notes.id
+                 LEFT JOIN books ON books.id = book_note_links.book_id
+                 WHERE notes.id = ?1",
+                [note_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let Some((title, relative_path, book_id, book_title)) = base else {
+            return Ok(None);
+        };
+        let mut statement = connection
+            .prepare(
+                "SELECT source.id, source.title, source.relative_path
+                 FROM note_links
+                 JOIN notes AS source ON source.id = note_links.source_note_id
+                 WHERE note_links.resolved_note_id = ?1 AND source.status = 'available'
+                 ORDER BY source.title COLLATE NOCASE",
+            )
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let backlinks = statement
+            .query_map([note_id.to_string()], |row| {
+                Ok(NoteBacklink {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    relative_path: row.get(2)?,
+                })
+            })
+            .map_err(|_| NotesError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        Ok(Some(NoteDetail {
+            id: note_id.to_string(),
+            title,
+            relative_path,
+            body,
+            book_id,
+            book_title,
+            backlinks,
+        }))
+    }
+}
+
+impl SearchRepository for SqliteDatabase {
+    fn enqueue_search_rebuild(&self) -> Result<(), SearchError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        connection
+            .execute(
+                "INSERT INTO search_index_jobs (id, status)
+                 VALUES ('full-rebuild', 'pending')
+                 ON CONFLICT(id) DO UPDATE SET
+                   status = 'pending', last_error_code = NULL,
+                   updated_at = CURRENT_TIMESTAMP",
+                [],
+            )
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        Ok(())
+    }
+
+    fn canonical_search_documents(
+        &self,
+    ) -> Result<(Vec<SearchDocument>, Option<PathBuf>), SearchError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        let mut documents = Vec::new();
+        {
+            let mut statement = connection
+                .prepare(
+                    "SELECT books.id, books.title, books.relative_path, books.status,
+                            COALESCE(book_user_state.reading_status, 'unread') || ' ' ||
+                            COALESCE(GROUP_CONCAT(book_tags.tag, ' '), '')
+                     FROM books
+                     LEFT JOIN book_user_state ON book_user_state.book_id = books.id
+                     LEFT JOIN book_tags ON book_tags.book_id = books.id
+                     GROUP BY books.id
+                     ORDER BY books.title, books.relative_path",
+                )
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok(SearchDocument {
+                        source_kind: "book".to_owned(),
+                        source_id: row.get(0)?,
+                        scope: "books".to_owned(),
+                        title: row.get(1)?,
+                        body: row.get(4)?,
+                        relative_path: row.get(2)?,
+                        status: row.get(3)?,
+                    })
+                })
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            documents.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| SearchError::IndexUnavailable)?,
+            );
+        }
+        {
+            let mut statement = connection
+                .prepare(
+                    "SELECT notes.id, notes.title, notes.relative_path, notes.status,
+                            COALESCE(books.title, '')
+                     FROM notes
+                     LEFT JOIN book_note_links ON book_note_links.note_id = notes.id
+                     LEFT JOIN books ON books.id = book_note_links.book_id
+                     ORDER BY notes.title, notes.relative_path",
+                )
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok(SearchDocument {
+                        source_kind: "note".to_owned(),
+                        source_id: row.get(0)?,
+                        scope: "notes".to_owned(),
+                        title: row.get(1)?,
+                        relative_path: row.get(2)?,
+                        status: row.get(3)?,
+                        body: row.get(4)?,
+                    })
+                })
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            documents.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| SearchError::IndexUnavailable)?,
+            );
+        }
+        {
+            let mut statement = connection
+                .prepare(
+                    "SELECT notes.id, notes.title, notes.relative_path, notes.status,
+                            note_headings.text
+                     FROM note_headings
+                     JOIN notes ON notes.id = note_headings.note_id",
+                )
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok(SearchDocument {
+                        source_kind: "note".to_owned(),
+                        source_id: row.get(0)?,
+                        scope: "headings".to_owned(),
+                        title: row.get(1)?,
+                        relative_path: row.get(2)?,
+                        status: row.get(3)?,
+                        body: row.get(4)?,
+                    })
+                })
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            documents.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| SearchError::IndexUnavailable)?,
+            );
+        }
+        {
+            let mut statement = connection
+                .prepare(
+                    "SELECT notes.id, notes.title, notes.relative_path, notes.status,
+                            note_tags.tag
+                     FROM note_tags
+                     JOIN notes ON notes.id = note_tags.note_id",
+                )
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok(SearchDocument {
+                        source_kind: "note".to_owned(),
+                        source_id: row.get(0)?,
+                        scope: "tags".to_owned(),
+                        title: row.get(1)?,
+                        relative_path: row.get(2)?,
+                        status: row.get(3)?,
+                        body: row.get(4)?,
+                    })
+                })
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            documents.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| SearchError::IndexUnavailable)?,
+            );
+        }
+        let notes_root = connection
+            .query_row(
+                "SELECT root_path FROM configured_notes_root WHERE id = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|_| SearchError::IndexUnavailable)?
+            .map(PathBuf::from);
+        Ok((documents, notes_root))
+    }
+
+    fn replace_search_documents(
+        &self,
+        documents: &[SearchDocument],
+        failed: u64,
+    ) -> Result<SearchRebuildSummary, SearchError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| SearchError::RebuildFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| SearchError::RebuildFailed)?;
+        let run_id = uuid::Uuid::new_v4().to_string();
+        transaction
+            .execute(
+                "INSERT INTO search_index_runs (id, status) VALUES (?1, 'running')",
+                [run_id.as_str()],
+            )
+            .map_err(|_| SearchError::RebuildFailed)?;
+        transaction
+            .execute(
+                "INSERT INTO search_index_jobs (id, status, attempt_count)
+                 VALUES ('full-rebuild', 'running', 1)
+                 ON CONFLICT(id) DO UPDATE SET
+                   status = 'running', attempt_count = attempt_count + 1,
+                   updated_at = CURRENT_TIMESTAMP",
+                [],
+            )
+            .map_err(|_| SearchError::RebuildFailed)?;
+        transaction
+            .execute("DELETE FROM search_documents_fts", [])
+            .map_err(|_| SearchError::RebuildFailed)?;
+        {
+            let mut statement = transaction
+                .prepare(
+                    "INSERT INTO search_documents_fts
+                     (source_kind, source_id, scope, title, body, relative_path, status)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                )
+                .map_err(|_| SearchError::RebuildFailed)?;
+            for document in documents {
+                statement
+                    .execute(params![
+                        document.source_kind,
+                        document.source_id,
+                        document.scope,
+                        document.title,
+                        document.body,
+                        document.relative_path,
+                        document.status,
+                    ])
+                    .map_err(|_| SearchError::RebuildFailed)?;
+            }
+        }
+        transaction
+            .execute(
+                "UPDATE search_index_runs
+                 SET status = 'complete', indexed_count = ?1, failed_count = ?2,
+                     finished_at = CURRENT_TIMESTAMP
+                 WHERE id = ?3",
+                params![
+                    i64::try_from(documents.len()).unwrap_or(i64::MAX),
+                    i64::try_from(failed).unwrap_or(i64::MAX),
+                    run_id
+                ],
+            )
+            .map_err(|_| SearchError::RebuildFailed)?;
+        transaction
+            .execute(
+                "UPDATE search_index_jobs
+                 SET status = 'complete', updated_at = CURRENT_TIMESTAMP
+                 WHERE id = 'full-rebuild'",
+                [],
+            )
+            .map_err(|_| SearchError::RebuildFailed)?;
+        transaction
+            .commit()
+            .map_err(|_| SearchError::RebuildFailed)?;
+        Ok(SearchRebuildSummary {
+            indexed: documents.len() as u64,
+            failed,
+        })
+    }
+
+    fn search(
+        &self,
+        query: &str,
+        scope: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<SearchResultItem>, SearchError> {
+        let terms = query
+            .split_whitespace()
+            .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+            .collect::<Vec<_>>();
+        if terms.is_empty() {
+            return Err(SearchError::InvalidQuery);
+        }
+        let expression = terms.join(" AND ");
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT source_kind, source_id, scope, title,
+                        snippet(search_documents_fts, 4, '<mark>', '</mark>', ' … ', 24),
+                        relative_path, status, bm25(search_documents_fts, 0.0, 0.0, 0.0, 8.0, 2.0, 1.0)
+                 FROM search_documents_fts
+                 WHERE search_documents_fts MATCH ?1
+                   AND (?2 IS NULL OR scope = ?2)
+                 ORDER BY bm25(search_documents_fts, 0.0, 0.0, 0.0, 8.0, 2.0, 1.0)
+                 LIMIT ?3",
+            )
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        statement
+            .query_map(params![expression, scope, i64::from(limit)], |row| {
+                Ok(SearchResultItem {
+                    source_kind: row.get(0)?,
+                    source_id: row.get(1)?,
+                    scope: row.get(2)?,
+                    title: row.get(3)?,
+                    snippet: row.get(4)?,
+                    relative_path: row.get(5)?,
+                    status: row.get(6)?,
+                    rank: row.get(7)?,
+                })
+            })
+            .map_err(|_| SearchError::IndexUnavailable)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| SearchError::IndexUnavailable)
+    }
+
+    fn search_diagnostics(&self) -> Result<SearchDiagnostics, SearchError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        let documents: i64 = connection
+            .query_row("SELECT COUNT(*) FROM search_documents_fts", [], |row| {
+                row.get(0)
+            })
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        let (failed_jobs, last_rebuild_at): (i64, Option<String>) = connection
+            .query_row(
+                "SELECT COALESCE(SUM(failed_count), 0), MAX(finished_at)
+                 FROM search_index_runs",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| SearchError::IndexUnavailable)?;
+        Ok(SearchDiagnostics {
+            documents: u64::try_from(documents).unwrap_or_default(),
+            failed_jobs: u64::try_from(failed_jobs).unwrap_or_default(),
+            last_rebuild_at,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         application::{
-            CancellationToken, DiscoveredBook, LibraryRepository, ReconcileCatalog, ScanResult,
-            ThumbnailGenerator, ThumbnailOutcome,
+            CancellationToken, DiscoveredBook, ExternalPathOpener, LibraryRepository, NotesError,
+            NotesWorkspace, ReconcileCatalog, ScanResult, SearchLibrary, ThumbnailGenerator,
+            ThumbnailOutcome,
         },
-        domain::{BookId, BookKind, ContentFingerprint, RelativePath},
-        infrastructure::FilesystemScanner,
+        domain::{BookId, BookKind, ContentFingerprint, NoteId, RelativePath},
+        infrastructure::{FilesystemScanner, MarkdownNotesStore},
     };
     use std::{
         sync::{Arc, Barrier},
@@ -749,6 +1957,14 @@ mod tests {
     use tempfile::TempDir;
 
     struct SkipRealLibraryThumbnails;
+
+    struct NoopExternalOpener;
+
+    impl ExternalPathOpener for NoopExternalOpener {
+        fn open_path(&self, _path: &Path) -> Result<(), NotesError> {
+            Ok(())
+        }
+    }
 
     impl ThumbnailGenerator for SkipRealLibraryThumbnails {
         fn generate(
@@ -906,10 +2122,8 @@ mod tests {
             .reconcile(configuration.id, &first_job, &scan)
             .unwrap();
         assert_eq!(first.added, 1);
-        let stored_source = database
-            .book_source_location(first.thumbnail_targets[0].0)
-            .unwrap()
-            .unwrap();
+        let book_id = first.thumbnail_targets[0].0;
+        let stored_source = database.book_source_location(book_id).unwrap().unwrap();
         assert_eq!(stored_source.kind, BookKind::PdfFile);
         assert_eq!(stored_source.relative_path.as_str(), "Shelf/Book.pdf");
         assert_eq!(stored_source.status, "available");
@@ -918,11 +2132,46 @@ mod tests {
             let connection = database.connection.lock().unwrap();
             connection
                 .execute(
-                    "UPDATE books SET title = 'My title', title_source = 'user'",
-                    [],
+                    "UPDATE books SET thumbnail_cache_path = 'thumbnails/known-good.png',
+                     thumbnail_status = 'ready' WHERE id = ?1",
+                    [book_id.to_string()],
                 )
                 .unwrap();
         }
+        database.invalidate_thumbnails().unwrap();
+        let ready_cover = database.list_books().unwrap();
+        assert_eq!(
+            ready_cover[0].thumbnail_cache_path.as_deref(),
+            Some("thumbnails/known-good.png")
+        );
+        assert_eq!(ready_cover[0].thumbnail_status, "ready");
+        {
+            let connection = database.connection.lock().unwrap();
+            connection
+                .execute(
+                    "UPDATE books SET thumbnail_status = 'error' WHERE id = ?1",
+                    [book_id.to_string()],
+                )
+                .unwrap();
+        }
+        database.invalidate_thumbnails().unwrap();
+        let pending_cover = database.list_books().unwrap();
+        assert_eq!(
+            pending_cover[0].thumbnail_cache_path.as_deref(),
+            Some("thumbnails/known-good.png")
+        );
+        assert_eq!(pending_cover[0].thumbnail_status, "pending");
+        database
+            .save_thumbnail_failure(book_id, "thumbnail_failed")
+            .unwrap();
+        let failed_cover = database.list_books().unwrap();
+        assert_eq!(
+            failed_cover[0].thumbnail_cache_path.as_deref(),
+            Some("thumbnails/known-good.png")
+        );
+        assert_eq!(failed_cover[0].thumbnail_status, "error");
+
+        assert!(database.update_display_title(book_id, "My title").unwrap());
         let second_job = database
             .start_scan(configuration.id, ScanReason::Manual)
             .unwrap();
@@ -934,6 +2183,20 @@ mod tests {
         let books = database.list_books().unwrap();
         assert_eq!(books.len(), 1);
         assert_eq!(books[0].title, "My title");
+        database
+            .update_book_detail(
+                book_id,
+                "reading",
+                &["psychology".to_owned(), "心理学".to_owned()],
+            )
+            .unwrap();
+        let detail = database.book_detail(book_id).unwrap().unwrap();
+        assert_eq!(detail.reading_status, "reading");
+        assert_eq!(detail.tags, ["psychology", "心理学"]);
+        let markdown = MarkdownNotesStore::new();
+        let search = SearchLibrary::new(&database, &markdown);
+        search.rebuild().unwrap();
+        assert_eq!(search.execute("心理学", Some("books")).unwrap().len(), 1);
 
         let third_job = database
             .start_scan(configuration.id, ScanReason::Manual)
@@ -951,6 +2214,9 @@ mod tests {
             .unwrap();
         assert_eq!(missing.missing, 1);
         assert_eq!(database.list_books().unwrap()[0].status, "missing");
+        let preserved = database.book_detail(book_id).unwrap().unwrap();
+        assert_eq!(preserved.reading_status, "reading");
+        assert_eq!(preserved.tags, ["psychology", "心理学"]);
     }
 
     #[test]
@@ -997,6 +2263,53 @@ mod tests {
         let books = database.list_books().unwrap();
         assert_eq!(books[0].status, "unavailable");
         assert_eq!(books[0].thumbnail_status, "error");
+    }
+
+    #[test]
+    fn markdown_notes_round_trip_and_resolve_backlinks() {
+        let app_data = TempDir::new().unwrap();
+        let notes_root = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let markdown = MarkdownNotesStore::new();
+        let opener = NoopExternalOpener;
+        let workspace = NotesWorkspace::new(&database, &markdown, &opener);
+
+        workspace.configure(notes_root.path()).unwrap();
+        let first = workspace.create("First note", None).unwrap();
+        let second = workspace.create("Second note", None).unwrap();
+        let second_id = NoteId::parse(&second.id).unwrap();
+        workspace
+            .save(second_id, "# Second note\n\nLinks to [[First note]].\n")
+            .unwrap();
+
+        let refreshed = workspace.refresh().unwrap();
+        assert_eq!(refreshed.discovered, 2);
+        assert_eq!(refreshed.missing, 0);
+        let detail = workspace.read(NoteId::parse(&first.id).unwrap()).unwrap();
+        assert_eq!(detail.backlinks.len(), 1);
+        assert_eq!(detail.backlinks[0].title, "Second note");
+        assert_eq!(
+            fs::read_to_string(notes_root.path().join(second.relative_path)).unwrap(),
+            "# Second note\n\nLinks to [[First note]].\n"
+        );
+
+        workspace
+            .save(
+                NoteId::parse(&first.id).unwrap(),
+                "# First note\n\n## 脳の自動操縦\n\n重要な内容です。 #心理学\n",
+            )
+            .unwrap();
+        let search = SearchLibrary::new(&database, &markdown);
+        let rebuilt = search.rebuild().unwrap();
+        assert!(rebuilt.indexed >= 4);
+        assert_eq!(rebuilt.failed, 0);
+        assert_eq!(search.execute("自動操縦", Some("notes")).unwrap().len(), 1);
+        assert_eq!(
+            search.execute("自動操縦", Some("headings")).unwrap().len(),
+            1
+        );
+        assert_eq!(search.execute("心理学", Some("tags")).unwrap().len(), 1);
+        assert!(search.diagnostics().unwrap().documents >= 4);
     }
 
     #[test]

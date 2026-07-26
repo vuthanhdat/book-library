@@ -10,8 +10,6 @@ pub(crate) enum SourceLocationError {
     InvalidBookId,
     #[error("the requested book does not exist")]
     BookNotFound,
-    #[error("the requested book source is missing")]
-    SourceMissing,
     #[error("the requested book source is unavailable")]
     SourceUnavailable,
     #[error("the requested source path is invalid")]
@@ -64,7 +62,7 @@ where
             .book_source_location(book_id)?
             .ok_or(SourceLocationError::BookNotFound)?;
         match source.status.as_str() {
-            "missing" => return Err(SourceLocationError::SourceMissing),
+            "missing" => {}
             "unsupported" | "error" => return Err(SourceLocationError::SourceUnavailable),
             "available" | "unavailable" => {}
             _ => return Err(SourceLocationError::SourceUnavailable),
@@ -81,7 +79,13 @@ where
                 .ok_or(SourceLocationError::InvalidSourcePath)?,
             BookKind::ImageFolder => source_path.as_path(),
         };
-        let directory = requested_directory
+        let mut candidate = requested_directory;
+        while !candidate.exists() {
+            candidate = candidate
+                .parent()
+                .ok_or(SourceLocationError::SourceUnavailable)?;
+        }
+        let directory = candidate
             .canonicalize()
             .map_err(|_| SourceLocationError::SourceUnavailable)?;
         if !directory.starts_with(&root) || !directory.is_dir() {
@@ -159,14 +163,17 @@ mod tests {
     }
 
     #[test]
-    fn missing_and_unknown_books_do_not_launch_the_file_manager() {
+    fn missing_book_opens_nearest_existing_parent_and_unknown_book_does_not_launch() {
+        let library = TempDir::new().unwrap();
+        let existing_parent = library.path().join("Shelf");
+        std::fs::create_dir_all(&existing_parent).unwrap();
         let manager = RecordingFileManager::default();
         let missing = OpenBookLocation::new(
             &FakeRepository {
                 source: Some(BookSourceLocation {
-                    library_root: PathBuf::from("unused"),
+                    library_root: library.path().to_path_buf(),
                     kind: BookKind::PdfFile,
-                    relative_path: RelativePath::new("Book.pdf").unwrap(),
+                    relative_path: RelativePath::new("Shelf/Gone/Book.pdf").unwrap(),
                     status: "missing".to_owned(),
                 }),
             },
@@ -176,8 +183,11 @@ mod tests {
         let unknown = OpenBookLocation::new(&FakeRepository { source: None }, &manager)
             .execute(BookId::new());
 
-        assert_eq!(missing, Err(SourceLocationError::SourceMissing));
+        assert_eq!(missing, Ok(()));
         assert_eq!(unknown, Err(SourceLocationError::BookNotFound));
-        assert!(manager.opened.lock().unwrap().is_empty());
+        assert_eq!(
+            manager.opened.lock().unwrap().as_slice(),
+            [existing_parent.canonicalize().unwrap()]
+        );
     }
 }

@@ -98,7 +98,11 @@ impl ThumbnailService {
         let height = (f64::from(source_height) * scale).round().max(1.0) as u32;
         let thumbnail = source.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
         let fingerprint_key = book.fingerprint.as_str().replace(':', "_");
-        let relative = format!("thumbnails/{book_id}-{fingerprint_key}.png");
+        // Use a new destination for every attempt. The catalog switches to this
+        // file only after the render succeeds, so a failed repair cannot damage
+        // the last known-good cover.
+        let generation_id = uuid::Uuid::new_v4();
+        let relative = format!("thumbnails/{book_id}-{fingerprint_key}-{generation_id}.png");
         let destination = self.cache_root.join(&relative);
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).map_err(|_| LibraryError::ThumbnailFailed)?;
@@ -125,6 +129,16 @@ impl ThumbnailGenerator for ThumbnailService {
         book_id: BookId,
         book: &DiscoveredBook,
     ) -> Result<ThumbnailOutcome, LibraryError> {
+        self.generate_with_timeout(root, book_id, book, GENERATION_TIMEOUT)
+    }
+
+    fn generate_with_timeout(
+        &self,
+        root: &Path,
+        book_id: BookId,
+        book: &DiscoveredBook,
+        timeout: Duration,
+    ) -> Result<ThumbnailOutcome, LibraryError> {
         let service = Self::new(self.cache_root.clone(), self.pdfium_directory.clone());
         let root = root.to_path_buf();
         let book = book.clone();
@@ -134,7 +148,7 @@ impl ThumbnailGenerator for ThumbnailService {
             let _ = sender.send(result);
         });
         receiver
-            .recv_timeout(GENERATION_TIMEOUT)
+            .recv_timeout(timeout)
             .map_err(|_| LibraryError::ThumbnailFailed)?
     }
 }

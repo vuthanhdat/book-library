@@ -96,28 +96,33 @@ Detailed tasks and acceptance criteria are in [Sprint 03](sprint-03.md).
 | M2-02 Platform file-manager adapter | READ-001 | P0 | Windows Done | M2-01 | Windows Explorer opens the correct directory; macOS Finder shares the same port. |
 | M2-03 Catalog open interaction | READ-001, READ-009 | P0 | Windows Done | M2-01, M2-02 | Grid/list actions open folders and show honest typed errors. |
 | M2-04 Realtime catalog search | LIB-014 | P0 | Windows Done | M1 browser | Unicode multi-term filtering updates while typing without network or source I/O. |
+| M2-05 Manual display-title editing | LIB-015 | P0 | Windows Done | M1 catalog | Correct one app-local title immediately; rescan preserves it and source paths remain unchanged. |
 
-## M3 — Knowledge MVP backlog
+## Current execution queue — M3 Knowledge MVP
 
-| Backlog item | Feature IDs | Priority | Depends on | Outcome |
-|---|---|---|---|---|
-| M3-01 Notes-root configuration | NOTE-001 | P0 | M0 settings | Configure and validate a notes root. |
-| M3-02 Markdown file workflow | NOTE-002 | P0 | M3-01 | Create and conservatively edit portable notes. |
-| M3-03 Book associations | NOTE-003 | P0 | M1 catalog, M3-02 | Notes link to cataloged books; page-level locations remain deferred. |
-| M3-04 Markdown projection | NOTE-004, NOTE-005 | P0 | M3-02 | Parse metadata/links into rebuildable SQLite projections. |
-| M3-05 External interoperability | NOTE-006 | P1 | M3-01 | Open notes and folders in normal editors/Obsidian on both platforms. |
-| M3-06 Backlinks | NOTE-007 | P1 | M3-04 | Resolve and display basic backlinks. |
-| M3-07 External edit reconciliation | NOTE-008 | P1 | M3-04 | External changes update projections without destructive rewrites. |
+Detailed tasks and acceptance criteria are in [Sprint 04](sprint-04.md).
+
+| Backlog item | Feature IDs | Priority | State | Depends on | Outcome |
+|---|---|---|---|---|---|
+| M3-01 Notes-root configuration | NOTE-001 | P0 | Windows Done | M0 settings | Configure and validate a notes root. |
+| M3-02 Markdown file workflow | NOTE-002 | P0 | Windows Done | M3-01 | Create and conservatively edit portable notes. |
+| M3-03 Book associations | NOTE-003 | P0 | Windows Done | M1 catalog, M3-02 | Notes link to cataloged books; page-level locations remain deferred. |
+| M3-04 Markdown projection | NOTE-004, NOTE-005 | P0 | Windows Done | M3-02 | Parse metadata/links into rebuildable SQLite projections. |
+| M3-05 External interoperability | NOTE-006 | P1 | Windows Done | M3-01 | Open notes and folders in normal editors/Obsidian on both platforms. |
+| M3-06 Backlinks | NOTE-007 | P1 | Windows Done | M3-04 | Resolve and display basic backlinks. |
+| M3-07 External edit reconciliation | NOTE-008 | P1 | Windows Done | M3-04 | External changes update projections without destructive rewrites. |
 
 ## M4 — Search MVP backlog
 
-| Backlog item | Feature IDs | Priority | Depends on | Outcome |
-|---|---|---|---|---|
-| M4-01 Search schema/projection | SEARCH-001 | P0 | M1 catalog, M3 projections | Rebuildable search documents and FTS5 schema exist. |
-| M4-02 Core indexing | SEARCH-002, SEARCH-003, SEARCH-004 | P0 | M4-01 | Books, notes, and tags are searchable offline. |
-| M4-03 Global search UI | SEARCH-005 | P0 | M4-02 | Query and result-type filters navigate to source items. |
-| M4-04 Incremental index queue | SEARCH-006 | P1 | M4-01, scan/note events | Changed content updates without a full rebuild. |
-| M4-05 Repair and diagnostics | SEARCH-007 | P1 | M4-01–M4-04 | User can rebuild and inspect failed documents. |
+| Backlog item | Feature IDs | Priority | Depends on | State | Outcome |
+|---|---|---|---|---|---|
+| M4-00 Missing-source recovery | LIB-016, LIB-017 | P0 | M1 catalog | Windows Done | Open a safe parent or explicitly relink inside the library. |
+| M4-00B Book Detail workflow | LIB-018 | P0 | M1 catalog, M3 notes | Windows Done | Manage reading status, tags, linked Markdown notes, and retry one cover with cloud hydration time. |
+| M4-01 Search schema/projection | SEARCH-001 | P0 | M1 catalog, M3 projections | Windows Done | Rebuildable search documents and FTS5 schema exist. |
+| M4-02 Core indexing | SEARCH-002, SEARCH-003, SEARCH-004 | P0 | M4-01 | Windows Done | Books, notes, headings, and tags are searchable offline. |
+| M4-03 Global search UI | SEARCH-005 | P0 | M4-02 | Windows Done | Query and result-type filters navigate to source items. |
+| M4-04 Incremental index queue | SEARCH-006 | P1 | M4-01, scan/note events | Windows Done | Changed content queues a coalesced rebuild without a full library rescan. |
+| M4-05 Repair and diagnostics | SEARCH-007 | P1 | M4-01–M4-04 | Windows Done | User can rebuild and inspect failed documents. |
 
 ## M5 — Reliability and release backlog
 

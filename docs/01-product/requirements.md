@@ -18,6 +18,7 @@ Functional requirements:
 - Generate and cache thumbnails without modifying source folders unless configured.
 - Open a selected book's source location in the operating system file manager.
 - Filter the local catalog in real time by title, path, kind, and status.
+- Edit an app-local display title without renaming or rewriting the source book.
 - Store metadata and rebuildable search indexes in SQLite when required.
 - Create and edit Markdown notes associated with books and topics.
 - Support Obsidian-compatible links and relative paths.

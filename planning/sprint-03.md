@@ -5,7 +5,7 @@
 - **State:** Windows Done — macOS Intel validation pending
 - **Milestone:** M2 — External reading workflow
 - **Platform order:** Windows 11 x64 implementation first; macOS Intel validation later
-- **Feature IDs:** READ-001, READ-009, LIB-014
+- **Feature IDs:** READ-001, READ-009, LIB-014, LIB-015
 
 ## Goal
 
@@ -21,6 +21,7 @@ content.
 3. Add explicit open-folder actions and honest unavailable/missing errors.
 4. Add live, Unicode-aware, multi-term catalog filtering.
 5. Validate the Windows release and preserve macOS-compatible boundaries.
+6. Edit one app-local display title without rescanning or changing source files.
 
 ## Windows acceptance
 
@@ -32,6 +33,8 @@ content.
 - typing filters title, relative path, kind, and status without network access;
 - Japanese titles and whitespace-separated queries match correctly;
 - opening and searching never changes source books.
+- title edits validate Unicode text, update search immediately, and survive
+  later rescans.
 
 ## Out of scope
 
@@ -49,5 +52,7 @@ content.
 - Application tests prove PDF-parent, image-folder, missing, and unknown-book
   behavior without launching a real file manager.
 - Live filtering passes Unicode Japanese and multi-term AND query tests.
+- Per-book Edit updates only the SQLite display title, marks its provenance as
+  `user`, refreshes search immediately, and survives reconciliation.
 - Rust, Clippy, format, frontend tests, typecheck, web build, Tauri release build,
   MSI/NSIS packaging, and release launch smoke all pass.

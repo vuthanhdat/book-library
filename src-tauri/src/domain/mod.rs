@@ -5,7 +5,7 @@ mod relative_path;
 
 pub(crate) use book::{BookKind, BookStatus, ContentFingerprint};
 pub(crate) use error::DomainError;
-pub(crate) use id::{BookId, LibraryId};
+pub(crate) use id::{BookId, LibraryId, NoteId};
 pub(crate) use relative_path::RelativePath;
 
 #[cfg(test)]
@@ -16,6 +16,7 @@ mod tests {
     fn public_domain_foundation_is_constructible() {
         let _library_id = LibraryId::new();
         let _book_id = BookId::new();
+        let _note_id = NoteId::new();
         let _kind = BookKind::PdfFile;
         let _other_kind = BookKind::ImageFolder;
         let _status = BookStatus::Available;

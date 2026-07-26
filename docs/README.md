@@ -55,6 +55,8 @@ The system architecture owns dependency direction, module ownership, initial cod
 - [Sprint 01](../planning/sprint-01.md)
 - [Sprint 02](../planning/sprint-02.md)
 - [Sprint 03](../planning/sprint-03.md)
+- [Sprint 04](../planning/sprint-04.md)
+- [Sprint 05](../planning/sprint-05.md)
 
 The implementation plan is the only roadmap document. The backlog decomposes milestones into slices, and the active sprint selects the work currently approved.
 
@@ -66,7 +68,7 @@ The implementation plan is the only roadmap document. The backlog decomposes mil
 | Architecture baseline | Accepted | Desktop/offline/filesystem-first boundaries are fixed. |
 | Detailed module designs | Draft | Remaining questions become ADRs only when they block scheduled work. |
 | Application scaffold | In progress | M0–revised M2 Windows implementation and local quality gates pass; hosted CI and macOS Intel evidence remain. |
-| Current delivery target | Sprint 03 | Windows external-open workflow and live catalog search complete; macOS Intel validation pending. |
+| Current delivery target | Sprint 05 | Windows missing-source recovery and offline Search MVP. |
 
 ## Documentation responsibilities
 

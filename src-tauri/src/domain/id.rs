@@ -26,3 +26,4 @@ macro_rules! domain_id {
 
 domain_id!(LibraryId);
 domain_id!(BookId);
+domain_id!(NoteId);

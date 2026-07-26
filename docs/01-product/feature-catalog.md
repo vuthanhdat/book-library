@@ -64,6 +64,10 @@ Design documents alone never justify `In Progress` or `Completed`.
 | LIB-012 | Favorite books | Deferred | Post-MVP |
 | LIB-013 | Multiple libraries | Deferred | Post-MVP |
 | LIB-014 | Realtime catalog filtering by title, path, kind, and status | In Progress | M2 |
+| LIB-015 | Edit app-local book display title without changing source files | In Progress | M2 |
+| LIB-016 | Open nearest existing authorized folder for a missing book | In Progress | M4 |
+| LIB-017 | Explicitly relink a missing source inside the configured library | In Progress | M4 |
+| LIB-018 | Book Detail with reading status, book tags, linked Markdown notes, and explicit cover retry | In Progress | M4 |
 
 ## Reader and reading state
 
@@ -90,27 +94,27 @@ Design documents alone never justify `In Progress` or `Completed`.
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| NOTE-001 | Configure notes root | Planned | M3 |
-| NOTE-002 | Create and conservatively edit Markdown notes | Planned | M3 |
-| NOTE-003 | Associate notes with books | Planned | M3 |
-| NOTE-004 | Parse headings, tags, links, and YAML frontmatter | Planned | M3 |
-| NOTE-005 | Rebuildable SQLite note projection | Planned | M3 |
-| NOTE-006 | Open note/folder in external editor or Obsidian | Planned | M3 |
-| NOTE-007 | Basic backlinks | Planned | M3 |
-| NOTE-008 | Reconcile externally edited notes | Planned | M3 |
+| NOTE-001 | Configure notes root | In Progress | M3 |
+| NOTE-002 | Create and conservatively edit Markdown notes | In Progress | M3 |
+| NOTE-003 | Associate notes with books | In Progress | M3 |
+| NOTE-004 | Parse headings, tags, links, and YAML frontmatter | In Progress | M3 |
+| NOTE-005 | Rebuildable SQLite note projection | In Progress | M3 |
+| NOTE-006 | Open note/folder in external editor or Obsidian | In Progress | M3 |
+| NOTE-007 | Basic backlinks | In Progress | M3 |
+| NOTE-008 | Reconcile externally edited notes | In Progress | M3 |
 | NOTE-009 | Graph view | Deferred | Post-MVP |
 
 ## Search
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| SEARCH-001 | FTS5 schema and search-document projection | Planned | M4 |
-| SEARCH-002 | Search books and bibliographic metadata | Planned | M4 |
-| SEARCH-003 | Search notes | Planned | M4 |
-| SEARCH-004 | Search tags | Planned | M4 |
-| SEARCH-005 | Global search UI with result-type filters | Planned | M4 |
-| SEARCH-006 | Incremental indexing after scans/note edits | Planned | M4 |
-| SEARCH-007 | Reindex, repair, and failed-document diagnostics | Planned | M4 |
+| SEARCH-001 | FTS5 schema and search-document projection | In Progress | M4 |
+| SEARCH-002 | Search books and bibliographic metadata | In Progress | M4 |
+| SEARCH-003 | Search notes | In Progress | M4 |
+| SEARCH-004 | Search tags | In Progress | M4 |
+| SEARCH-005 | Global search UI with result-type filters | In Progress | M4 |
+| SEARCH-006 | Incremental indexing after scans/note edits | In Progress | M4 |
+| SEARCH-007 | Reindex, repair, and failed-document diagnostics | In Progress | M4 |
 | SEARCH-008 | Semantic/vector search | Deferred | Post-MVP |
 
 ## Reliability and release

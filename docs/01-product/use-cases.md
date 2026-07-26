@@ -16,6 +16,9 @@ Feature IDs, status, and milestone assignment are authoritative in the [feature 
 | Rescan or repair catalog | `LIB-011` | Refresh changed content and rebuild derived catalog or thumbnail state safely. | [`03-library/`](../03-library/) |
 | Open book source location | `READ-001`, `READ-009` | Open a PDF's containing directory or an image book's directory in the OS file manager. | [ADR-009](../adr/ADR-009-external-reading-and-live-catalog-search.md) |
 | Filter catalog live | `LIB-014` | Narrow visible books immediately by title, relative path, kind, or status. | [ADR-009](../adr/ADR-009-external-reading-and-live-catalog-search.md) |
+| Edit book display title | `LIB-015` | Correct one catalog title immediately without rescanning or modifying its source path. | [`03-library/discovery.md`](../03-library/discovery.md) |
+| Recover a missing source | `LIB-016`, `LIB-017` | Open the nearest safe parent or explicitly relink a matching source inside the configured library without modifying files. | [`ADR-011`](../adr/ADR-011-missing-source-recovery-and-m4-search.md) |
+| Manage book details | `LIB-018` | Set book-level reading status and tags, navigate linked Markdown notes, and explicitly retry a cloud-backed cover. | [`ADR-012`](../adr/ADR-012-book-detail-and-explicit-cover-retry.md) |
 | Configure notes | `NOTE-001` | Select and validate the root that owns canonical Markdown notes. | [`05-notes/notes.md`](../05-notes/notes.md) |
 | Create, edit, and associate notes | `NOTE-002`–`NOTE-005` | Maintain portable Markdown linked to books or reading locations with rebuildable projections. | [`05-notes/notes.md`](../05-notes/notes.md) |
 | Use notes externally | `NOTE-006` | Open notes or their folder in Obsidian or a normal editor without conversion. | [`05-notes/obsidian.md`](../05-notes/obsidian.md) |

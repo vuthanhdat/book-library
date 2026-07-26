@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use thiserror::Error;
 
@@ -48,6 +51,14 @@ impl ScanReason {
             Self::Manual => "manual",
             Self::Repair => "repair",
         }
+    }
+}
+
+fn thumbnail_timeout(reason: ScanReason) -> Duration {
+    if matches!(reason, ScanReason::Repair) {
+        Duration::from_secs(30)
+    } else {
+        Duration::from_secs(1)
     }
 }
 
@@ -179,6 +190,16 @@ pub(crate) trait ThumbnailGenerator: Sync {
         book_id: BookId,
         book: &DiscoveredBook,
     ) -> Result<ThumbnailOutcome, LibraryError>;
+
+    fn generate_with_timeout(
+        &self,
+        root: &Path,
+        book_id: BookId,
+        book: &DiscoveredBook,
+        _timeout: std::time::Duration,
+    ) -> Result<ThumbnailOutcome, LibraryError> {
+        self.generate(root, book_id, book)
+    }
 }
 
 pub(crate) struct ConfigureLibrary<'a, Repository> {
@@ -261,7 +282,11 @@ where
         let mut thumbnail_failures = 0;
 
         if !scan.cancelled {
+            let thumbnail_timeout = thumbnail_timeout(reason);
             for batch in reconciliation.thumbnail_targets.chunks(8) {
+                if cancellation.is_cancelled() {
+                    break;
+                }
                 let results = std::thread::scope(|scope| {
                     let workers = batch
                         .iter()
@@ -269,8 +294,12 @@ where
                             scope.spawn(|| {
                                 (
                                     *book_id,
-                                    self.thumbnails
-                                        .generate(&configuration.root, *book_id, book),
+                                    self.thumbnails.generate_with_timeout(
+                                        &configuration.root,
+                                        *book_id,
+                                        book,
+                                        thumbnail_timeout,
+                                    ),
                                 )
                             })
                         })
@@ -310,9 +339,30 @@ where
             issues: scan.issues.len() as u64,
             thumbnails_generated: generated,
             thumbnail_failures,
-            cancelled: scan.cancelled,
+            cancelled: scan.cancelled || cancellation.is_cancelled(),
         };
         self.repository.finish_scan(&summary)?;
         Ok(summary)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repair_allows_cloud_hydration_without_slowing_normal_scans() {
+        assert_eq!(
+            thumbnail_timeout(ScanReason::Repair),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            thumbnail_timeout(ScanReason::Initial),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            thumbnail_timeout(ScanReason::Manual),
+            Duration::from_secs(1)
+        );
     }
 }
