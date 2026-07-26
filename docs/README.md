@@ -31,6 +31,9 @@ An `Open Questions` section records undecided options only. It is not an approve
 
 - [System architecture](02-architecture/architecture.md)
 - [Domain model](02-architecture/domain-model.md)
+- [SQLite foundation](02-architecture/sqlite-foundation.md)
+- [PDFium spike](02-architecture/pdfium-spike.md)
+- [Google Drive Desktop spike](02-architecture/google-drive-spike.md)
 - [Architecture Decision Records](adr/README.md)
 
 The system architecture owns dependency direction, module ownership, initial code structure, data ownership, technology boundaries, and runtime composition. Do not create separate architecture summaries that repeat those rules.
@@ -48,6 +51,8 @@ The system architecture owns dependency direction, module ownership, initial cod
 - [Implementation plan](../planning/implementation-plan.md)
 - [Prioritized backlog](../planning/backlog.md)
 - [Sprint 01](../planning/sprint-01.md)
+- [Sprint 02](../planning/sprint-02.md)
+- [Sprint 02](../planning/sprint-02.md)
 
 The implementation plan is the only roadmap document. The backlog decomposes milestones into slices, and the active sprint selects the work currently approved.
 
@@ -58,8 +63,8 @@ The implementation plan is the only roadmap document. The backlog decomposes mil
 | Product scope | Defined | Core reader and knowledge scope documented. |
 | Architecture baseline | Accepted | Desktop/offline/filesystem-first boundaries are fixed. |
 | Detailed module designs | Draft | Remaining questions become ADRs only when they block scheduled work. |
-| Application scaffold | Not started | No Tauri, React, Rust, SQLite migration, or CI source exists yet. |
-| Current delivery target | Sprint 01 | Engineering foundation and risk-reduction spikes. |
+| Application scaffold | In progress | Windows scaffold, domain, SQLite, status UI, logging, local quality gates, and native PDFium smoke pass; disposable Drive watcher testing, hosted CI, and macOS Intel evidence remain. |
+| Current delivery target | Sprint 02 | Windows M1 Library MVP complete; macOS Intel validation pending. |
 
 ## Documentation responsibilities
 

@@ -69,8 +69,11 @@ Discovery fields:
 - Duplicate detection by content hash.
 - User rules for ignoring folders or treating nested folders as volumes.
 
-# Open Questions
+# Settled M1 policy
 
-- Should deleted files remain as missing forever until manually removed?
-- Should a folder containing one PDF and images be a category or a compound book?
-- Should discovery create collection records from folder hierarchy?
+- Missing records remain in catalog history and are never deleted automatically.
+- PDF candidates and eligible direct-image folders are independent books, even
+  in a mixed folder.
+- Folder hierarchy is context only; collection records are deferred.
+
+See ADR-008 for path identity and image-folder details.

@@ -58,8 +58,15 @@ If cache files are stored outside the library root in app data, `cache_relative_
 - PDF page selection for cover.
 - Perceptual placeholder colors generated from cover thumbnails.
 
-# Open Questions
+# Settled M1 policy
 
-- Should thumbnails be stored in app cache or in a `.book-library` folder inside the library root?
-- Should failed thumbnail jobs retry automatically or only on rescan?
-- Should animated image formats use the first frame only?
+- Thumbnails are bounded 320-by-448 PNG files in app cache, never in the library
+  root.
+- Fingerprint changes and explicit repair invalidate cached covers.
+- A failed cover remains a browsable book with an error state and may retry on
+  rescan or repair.
+- Only the first decoded frame is used for supported image formats.
+- PDFium rendering is serialized because its native library is not treated as
+  concurrently re-entrant.
+
+See ADR-008.

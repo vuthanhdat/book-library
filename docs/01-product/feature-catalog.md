@@ -4,7 +4,9 @@
 
 This catalog is the authoritative inventory of product capabilities, implementation status, and milestone ownership.
 
-The repository currently contains specifications only. No feature may be marked `In Progress` or `Completed` until implementation work exists on an active branch and satisfies the status rules below.
+The repository contains an active Windows implementation. No feature may be
+marked `In Progress` or `Completed` until implementation work exists on an active
+branch and satisfies the status rules below.
 
 ## Feature status
 
@@ -35,30 +37,30 @@ Design documents alone never justify `In Progress` or `Completed`.
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| ENG-001 | Cross-platform Tauri 2 + React + TypeScript application scaffold | Ready | M0 |
-| ENG-002 | Rust modular-monolith structure and dependency boundaries | Ready | M0 |
-| ENG-003 | Typed Tauri command/event contracts | Ready | M0 |
-| ENG-004 | SQLite connection and migration runner | Ready | M0 |
-| ENG-005 | Domain identifiers, `RelativePath`, and common errors | Ready | M0 |
-| ENG-006 | Structured logging and safe diagnostics | Ready | M0 |
-| ENG-007 | Windows/macOS Rust, frontend, build, and Markdown CI quality gates | Ready | M0 |
-| ENG-008 | Temporary library and SQLite test fixtures | Ready | M0 |
+| ENG-001 | Cross-platform Tauri 2 + React + TypeScript application scaffold | In Progress | M0 |
+| ENG-002 | Rust modular-monolith structure and dependency boundaries | In Progress | M0 |
+| ENG-003 | Typed Tauri command/event contracts | In Progress | M0 |
+| ENG-004 | SQLite connection and migration runner | In Progress | M0 |
+| ENG-005 | Domain identifiers, `RelativePath`, and common errors | In Progress | M0 |
+| ENG-006 | Structured logging and safe diagnostics | In Progress | M0 |
+| ENG-007 | Windows/macOS Rust, frontend, build, and Markdown CI quality gates | In Progress | M0 |
+| ENG-008 | Temporary library and SQLite test fixtures | In Progress | M0 |
 
 ## Library
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| LIB-001 | Configure and initialize one library root | Planned | M1 |
-| LIB-002 | Recursive scan with progress and cancellation | Planned | M1 |
-| LIB-003 | Discover PDF books | Planned | M1 |
-| LIB-004 | Discover image-folder books with natural page ordering | Planned | M1 |
-| LIB-005 | Idempotent catalog upsert and reconciliation | Planned | M1 |
-| LIB-006 | Detect changed and newly added books | Planned | M1 |
-| LIB-007 | Mark unavailable/missing books without destructive deletion | Planned | M1 |
-| LIB-008 | Extract core book metadata | Planned | M1 |
-| LIB-009 | Generate rebuildable thumbnails | Planned | M1 |
-| LIB-010 | Browse catalog as grid/list | Planned | M1 |
-| LIB-011 | Manual rescan and projection repair | Planned | M1 |
+| LIB-001 | Configure and initialize one library root | In Progress | M1 |
+| LIB-002 | Recursive scan with progress and cancellation | In Progress | M1 |
+| LIB-003 | Discover PDF books | In Progress | M1 |
+| LIB-004 | Discover image-folder books with natural page ordering | In Progress | M1 |
+| LIB-005 | Idempotent catalog upsert and reconciliation | In Progress | M1 |
+| LIB-006 | Detect changed and newly added books | In Progress | M1 |
+| LIB-007 | Mark unavailable/missing books without destructive deletion | In Progress | M1 |
+| LIB-008 | Extract core book metadata | In Progress | M1 |
+| LIB-009 | Generate rebuildable thumbnails | In Progress | M1 |
+| LIB-010 | Browse catalog as grid/list | In Progress | M1 |
+| LIB-011 | Manual rescan and projection repair | In Progress | M1 |
 | LIB-012 | Favorite books | Deferred | Post-MVP |
 | LIB-013 | Multiple libraries | Deferred | Post-MVP |
 

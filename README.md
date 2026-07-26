@@ -4,7 +4,10 @@ Book Library is a desktop-first, offline-first application for managing and read
 
 The application treats the user's filesystem as the source of truth. It does not upload books, copy them into a database, or require a cloud account. A folder synchronized by Google Drive Desktop is treated as an ordinary local folder.
 
-> **Current status:** specification and engineering-foundation phase. The repository does not contain the Tauri/React/Rust application scaffold yet. Implementation starts with [Sprint 01](planning/sprint-01.md).
+> **Current status:** The Windows M1 Library MVP pass is complete. The app can
+> configure and scan a real library, catalog PDF/image-folder books, generate
+> rebuildable covers, and browse/rescan/repair the catalog. macOS Intel validation
+> remains deferred until the Windows version is finished.
 
 ## Product scope
 
@@ -38,7 +41,7 @@ OCR, Japanese dictionary lookup, AI assistance, Anki export, additional book for
 4. [System architecture](docs/02-architecture/architecture.md) — layers, modules, runtime boundaries, and data ownership.
 5. [Architecture decisions](docs/adr/README.md) — decisions that override unresolved options in design documents.
 6. [Implementation plan](planning/implementation-plan.md) — milestone delivery sequence.
-7. [Sprint 01](planning/sprint-01.md) — first executable engineering scope.
+7. [Sprint 02](planning/sprint-02.md) — active Library MVP delivery record.
 
 ## Planned implementation stack
 
@@ -63,3 +66,35 @@ Before implementing a feature:
 5. update tests and documentation with the implementation.
 
 See [AGENTS.md](AGENTS.md) for mandatory architecture rules and [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow.
+
+## Engineering-foundation commands
+
+Install Node.js 24 and the current stable Rust toolchain, then run:
+
+```text
+npm ci
+npm run typecheck
+npm run test
+npm run build
+npm run check:links
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run tauri dev
+```
+
+The CI workflow runs the same quality gates on Windows x64 and the GitHub-hosted
+`macos-15-intel` runner. A real Intel Mac smoke test remains required by Sprint 01.
+
+## Local operational data
+
+The database and structured JSON-line logs are stored under the Tauri-resolved
+application-data directory, never under the configured library root.
+
+- Windows development: `%APPDATA%/dev.booklibrary.desktop/`
+- macOS development: `~/Library/Application Support/dev.booklibrary.desktop/`
+- Logs: the `logs/` child directory, with daily `book-library.jsonl` files
+
+Logs include safe operation IDs, event names, error codes, and platform metadata.
+They must not contain note bodies, extracted book text, secrets, page images, or
+unnecessary absolute source paths.

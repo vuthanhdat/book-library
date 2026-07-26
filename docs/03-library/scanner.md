@@ -63,8 +63,12 @@ Scanner output shape:
 - Add scanner plugin hooks for custom book types.
 - Add content hashing in a lower-priority background job.
 
-# Open Questions
+# Settled M1 policy
 
-- What image extensions should be supported first: `jpg`, `jpeg`, `png`, `webp`, `avif`?
-- What minimum image count should distinguish a book folder from a folder containing illustrations?
-- Should image folders with subfolders be treated as one book or chapter collection?
+- Supported image extensions are `jpg`, `jpeg`, `png`, and `webp`.
+- Two direct supported images make a folder eligible.
+- Each eligible nested folder is an independent book; parent folders do not
+  absorb descendant pages.
+- Symlinks are not followed and cloud-only entries are cataloged as unavailable.
+
+See ADR-008.

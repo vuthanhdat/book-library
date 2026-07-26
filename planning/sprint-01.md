@@ -2,9 +2,10 @@
 
 ## Status
 
-- **State:** Ready
+- **State:** Windows Done — macOS Intel validation pending
 - **Milestone:** M0 — Engineering foundation
-- **Implementation:** not started
+- **Implementation:** in progress — Windows application foundation passes locally;
+  disposable Drive watcher testing and macOS Intel evidence remain
 - **Feature IDs:** ENG-001 through ENG-008
 
 ## Sprint goal
@@ -295,6 +296,16 @@ And a documented smoke test must pass on the owner's real Intel Mac
 - OCR, dictionary, AI, Anki, or plugin implementation.
 
 ## Suggested implementation sequence
+
+### Current platform execution order
+
+Implementation and automated validation are performed on Windows 11 x64 first.
+After the Windows Sprint 01 slice is complete, the same branch is validated and
+repaired on a real macOS Intel x64 machine before the sprint or M0 milestone closes.
+
+This is an execution order only. It does not defer macOS from M0, permit a separate
+macOS implementation, or relax ADR-007. Backlog items whose outcomes explicitly
+require both platforms remain `In Progress` until the later macOS validation passes.
 
 ```mermaid
 flowchart TD

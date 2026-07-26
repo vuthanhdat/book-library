@@ -2,9 +2,9 @@
 
 ## Status
 
-- **Current milestone:** M0 — Engineering foundation
-- **Current sprint:** [Sprint 01](sprint-01.md)
-- **Implementation state:** not started; the repository currently contains specifications only
+- **Current milestone:** M1 — Library MVP (Windows implementation pass)
+- **Current sprint:** [Sprint 02](sprint-02.md)
+- **Implementation state:** M0 and M1 Windows passes are complete locally; macOS Intel validation remains deferred by execution order
 - **Feature status source:** [Feature catalog](../docs/01-product/feature-catalog.md)
 - **Technical decision source:** [Accepted ADRs](../docs/adr/README.md)
 
@@ -113,12 +113,11 @@ The user can select one real folder, scan it, discover PDFs and image-folder boo
 - support manual rescan and initialization summary;
 - handle platform-specific hidden files, symlinks, permissions, case collisions, and Google Drive availability behind shared scanner ports.
 
-### Decisions required before implementation
+### Accepted implementation policy
 
-- stable identity during rename: path-only identity or fingerprint-assisted matching;
-- exact image-folder eligibility and nested-chapter policy;
-- case-collision and symlink containment policy for supported filesystems;
-- thumbnail format, dimensions, and cache invalidation policy.
+M1 identity, case comparison, symlink containment, image-folder eligibility,
+and thumbnail policy are settled by
+[ADR-008](../docs/adr/ADR-008-m1-library-policies.md).
 
 ### Exit gate
 

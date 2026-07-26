@@ -69,8 +69,9 @@ Initialization tables:
 - Detect moved roots and help the user relink them.
 - Export initialization reports for debugging.
 
-# Open Questions
+# Settled M1 policy
 
-- Should the SQLite database be stored outside the library root by default?
-- Should notes folder creation happen during initialization or when first note is created?
-- Should the app skip hidden folders automatically?
+- SQLite, caches, logs, and thumbnails live outside the library root in OS app
+  data under ADR-005.
+- Notes-folder creation is deferred to the notes workflow.
+- Hidden and system entries are skipped conservatively under ADR-008.

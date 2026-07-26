@@ -22,42 +22,69 @@ Do not create a second feature ID in this backlog. A backlog item may group seve
 
 Priority is meaningful inside a milestone; it does not move an M6 item ahead of unfinished M1 work.
 
-## Current execution queue — M0
+## Engineering foundation — M0
 
 Detailed tasks and acceptance criteria are in [Sprint 01](sprint-01.md).
 
+Backlog `Done` means the item outcome and its item-level checks pass in the current
+branch. The feature catalog remains the authority for feature status and does not
+move to `Completed` until implementation is merged and all required platform gates pass.
+The current execution order completes the Windows 11 x64 implementation first, then
+runs the required macOS Intel x64 validation before closing cross-platform items.
+
 | Backlog item | Feature IDs | Priority | State | Dependency | Outcome |
 |---|---|---|---|---|---|
-| M0-01 Cross-platform application scaffold | ENG-001 | P0 | Ready | None | The same Tauri/React/TypeScript app launches on Windows 11 x64 and macOS Intel x64. |
-| M0-02 Architecture modules | ENG-002 | P0 | Ready | M0-01 | Rust modular-monolith structure and composition root exist without platform-specific domain/application forks. |
-| M0-03 Domain primitives | ENG-005 | P0 | Ready | M0-02 | Tested IDs, enums, errors, and cross-platform `RelativePath`. |
-| M0-04 SQLite foundation | ENG-004, ENG-008 | P0 | Ready | M0-02, M0-03 | OS app-data database, migrations, and temporary fixtures work on both supported platforms. |
-| M0-05 Typed application status | ENG-003 | P0 | Ready | M0-04 | React calls a real use case through a thin typed Tauri command. |
-| M0-06 Honest frontend shell | ENG-001, ENG-003 | P0 | Ready | M0-05 | Loading, healthy/no-library, and startup-error states render consistently on both platforms. |
-| M0-07 Logging and diagnostics | ENG-006 | P1 | Ready | M0-04 | Safe structured local logs exist in each OS application-data location. |
-| M0-08 Cross-platform CI quality gates | ENG-007 | P0 | Ready | M0-01–M0-07 | Actual format/lint/test/build/link checks run and fail correctly for compatible Windows and macOS environments. |
-| M0-09 Cross-platform technical spikes | Risk reduction | P0 | Ready | M0-01 | PDFium, Drive Desktop, and SQLite findings are documented for Windows x64 and macOS Intel x64. |
+| M0-01 Cross-platform application scaffold | ENG-001 | P0 | In Progress | None | The same Tauri/React/TypeScript app launches on Windows 11 x64 and macOS Intel x64. |
+| M0-02 Architecture modules | ENG-002 | P0 | Done | M0-01 | Rust modular-monolith structure and composition root exist without platform-specific domain/application forks. |
+| M0-03 Domain primitives | ENG-005 | P0 | Done | M0-02 | Tested IDs, enums, errors, and cross-platform `RelativePath`. |
+| M0-04 SQLite foundation | ENG-004, ENG-008 | P0 | In Progress | M0-02, M0-03 | OS app-data database, migrations, and temporary fixtures work on both supported platforms. |
+| M0-05 Typed application status | ENG-003 | P0 | Done | M0-04 | React calls a real use case through a thin typed Tauri command. |
+| M0-06 Honest frontend shell | ENG-001, ENG-003 | P0 | In Progress | M0-05 | Loading, healthy/no-library, and startup-error states render consistently on both platforms. |
+| M0-07 Logging and diagnostics | ENG-006 | P1 | In Progress | M0-04 | Safe structured local logs exist in each OS application-data location. |
+| M0-08 Cross-platform CI quality gates | ENG-007 | P0 | In Progress | M0-01–M0-07 | Actual format/lint/test/build/link checks run and fail correctly for compatible Windows and macOS environments. |
+| M0-09 Cross-platform technical spikes | Risk reduction | P0 | In Progress | M0-01 | PDFium, Drive Desktop, and SQLite findings are documented for Windows x64 and macOS Intel x64. |
 
-## M1 — Library MVP backlog
+### Current Windows evidence
 
-| Backlog item | Feature IDs | Priority | Depends on | Outcome |
-|---|---|---|---|---|
-| M1-01 Configure library | LIB-001 | P0 | M0 | Select, validate, persist, and change one local root on either supported platform. |
-| M1-02 Scanner job | LIB-002 | P0 | M1-01 | Recursive scan reports progress, cancellation, warnings, and failures. |
-| M1-03 Candidate discovery | LIB-003, LIB-004 | P0 | M1-02 | PDFs and eligible image folders become deterministic candidates. |
-| M1-04 Catalog reconciliation | LIB-005, LIB-006, LIB-007 | P0 | M1-03 | Repeated scans upsert, preserve user metadata, and mark missing items safely. |
-| M1-05 Metadata extraction | LIB-008 | P0 | M1-04 | Core metadata is captured with per-book failure isolation. |
-| M1-06 Thumbnail pipeline | LIB-009 | P0 | M1-03, M1-04 | Rebuildable covers are generated outside source folders. |
-| M1-07 Library browser | LIB-010 | P0 | M1-04, M1-06 | Virtualized grid/list shows catalog and opens a selected book action. |
-| M1-08 Rescan and repair | LIB-011 | P1 | M1-02–M1-07 | User can rescan and repair derived catalog/thumbnail state. |
+| Item | Windows evidence | Remaining before `Done` |
+|---|---|---|
+| M0-01 | Shared Tauri executable builds and launches. | Real macOS Intel launch/build. |
+| M0-04 | App-data database creation, reopen, migrations, foreign keys, rollback-journal concurrency, and typed failure tests pass. | Equivalent macOS Intel validation. |
+| M0-06 | Loading, healthy/no-library, startup-error, unsupported-platform, and React error-boundary states are implemented; frontend tests and Windows smoke pass. | Real macOS Intel UI smoke. |
+| M0-07 | Daily structured log file and safe startup event verified under Windows app-data. | Equivalent macOS Intel verification. |
+| M0-08 | Every declared gate passes locally on Windows; workflow targets Windows x64 and `macos-15-intel`. | Run the hosted workflow after publication. |
+| M0-09 | Windows PDFium native render and SQLite spike pass; Drive root observation is read-only. | Authorized disposable Drive watcher test and all macOS Intel spike evidence. |
 
-Blocking decisions before M1 implementation:
+## Current execution queue — M1 Library MVP
 
-- cross-platform path uniqueness, case-collision, and case-only rename policy;
-- symlink/root-containment policy;
-- stable identity during rename;
-- image-folder eligibility, mixed-content, and nested-chapter policy;
-- thumbnail format and invalidation.
+The Windows implementation pass is complete. `Windows Done` records that the
+item-level implementation and Windows checks pass in this branch; the mapped
+feature remains `In Progress` until the required macOS Intel validation and merge.
+
+| Backlog item | Feature IDs | Priority | State | Depends on | Outcome |
+|---|---|---|---|---|---|
+| M1-01 Configure library | LIB-001 | P0 | Windows Done | M0 | Select, validate, persist, and change one local root on either supported platform. |
+| M1-02 Scanner job | LIB-002 | P0 | Windows Done | M1-01 | Recursive scan reports progress, cancellation, warnings, and failures. |
+| M1-03 Candidate discovery | LIB-003, LIB-004 | P0 | Windows Done | M1-02 | PDFs and eligible image folders become deterministic candidates. |
+| M1-04 Catalog reconciliation | LIB-005, LIB-006, LIB-007 | P0 | Windows Done | M1-03 | Repeated scans upsert, preserve user metadata, and mark missing items safely. |
+| M1-05 Metadata extraction | LIB-008 | P0 | Windows Done | M1-04 | Core metadata is captured with per-book failure isolation. |
+| M1-06 Thumbnail pipeline | LIB-009 | P0 | Windows Done | M1-03, M1-04 | Rebuildable covers are generated outside source folders. |
+| M1-07 Library browser | LIB-010 | P0 | Windows Done | M1-04, M1-06 | Virtualized grid/list shows real catalog records and availability states. |
+| M1-08 Rescan and repair | LIB-011 | P1 | Windows Done | M1-02–M1-07 | User can rescan and repair derived catalog/thumbnail state. |
+
+### M1 Windows evidence
+
+| Area | Evidence | Remaining |
+|---|---|---|
+| Configuration and boundary | Native folder picker, validated machine-local root, typed Tauri commands/events, and user-safe errors. | macOS Intel smoke. |
+| Discovery and safety | Unit fixtures cover PDF signatures, natural image ordering, cancellation, relative paths, symlink skipping, and cloud-only status. | macOS Intel filesystem behavior. |
+| Catalog | SQLite tests cover idempotent upsert, user-title preservation, missing state, unavailable state, and thumbnail scheduling. | macOS Intel database smoke. |
+| Real library | Read-only two-pass scan of `H:/My Drive/07_NEW_KINDLE`: 1,019 catalog records on pass one, zero additions on pass two, and unchanged 195-entry root inventory. | Equivalent macOS Intel mixed-library smoke. |
+| Thumbnails | Bounded PNG fixture is generated in app-data; PDFium access is serialized; failures remain browsable and repairable. | macOS Intel PDFium binary/render smoke. |
+| Browser and repair | Tested grid/list UI uses real catalog data and exposes initialize, cancel, rescan, and repair actions. | macOS Intel UI smoke. |
+
+M1 policy decisions are accepted in
+[ADR-008](../docs/adr/ADR-008-m1-library-policies.md).
 
 ## M2 — Reading MVP backlog
 
