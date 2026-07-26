@@ -47,6 +47,16 @@ interface ScanSummary {
   cancelled: boolean;
 }
 
+export type ActiveScan = "initial" | "rescan" | "repair";
+
+export function scanButtonLabels(activeScan: ActiveScan | null) {
+  return {
+    repair:
+      activeScan === "repair" ? "Repair running…" : "Repair covers",
+    rescan: activeScan === "rescan" ? "Rescanning…" : "Rescan",
+  };
+}
+
 interface UpdatedBookTitle {
   title: string;
 }
@@ -173,6 +183,7 @@ export function App() {
   const [books, setBooks] = useState<Book[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [activeScan, setActiveScan] = useState<ActiveScan | null>(null);
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [operationError, setOperationError] = useState<DesktopError | null>(null);
   const [openingBookId, setOpeningBookId] = useState<string | null>(null);
@@ -288,6 +299,13 @@ export function App() {
   const runScan = async (
     command: "initialize_library" | "rescan_library" | "repair_library",
   ) => {
+    const scanKind: ActiveScan =
+      command === "repair_library"
+        ? "repair"
+        : command === "rescan_library"
+          ? "rescan"
+          : "initial";
+    setActiveScan(scanKind);
     setOperationError(null);
     setScanSummary(null);
     setScanProgress({
@@ -303,6 +321,7 @@ export function App() {
       setOperationError(desktopError(error));
     } finally {
       setScanProgress(null);
+      setActiveScan(null);
     }
   };
 
@@ -700,6 +719,7 @@ export function App() {
                 />
               ) : (
                 <LibraryWorkspace
+                  activeScan={activeScan}
                   books={visibleBooks}
                   error={operationError}
                   onCancel={() => void cancelScan()}
@@ -1496,6 +1516,7 @@ export function parseBookTags(value: string): string[] {
 }
 
 function LibraryWorkspace({
+  activeScan,
   books,
   error,
   onCancel,
@@ -1514,6 +1535,7 @@ function LibraryWorkspace({
   totalBooks,
   view,
 }: {
+  activeScan: ActiveScan | null;
   books: Book[];
   error: DesktopError | null;
   onCancel: () => void;
@@ -1532,6 +1554,7 @@ function LibraryWorkspace({
   totalBooks: number;
   view: "grid" | "list";
 }) {
+  const scanLabels = scanButtonLabels(activeScan);
   return (
     <>
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-stone-800 pb-6">
@@ -1546,19 +1569,19 @@ function LibraryWorkspace({
         <div className="flex gap-2">
           <button
             className="rounded-lg border border-stone-700 px-3 py-2 text-sm disabled:opacity-50"
-            disabled={progress !== null}
+            disabled={activeScan !== null}
             onClick={onRepair}
             type="button"
           >
-            {progress ? "Repair running…" : "Repair covers"}
+            {scanLabels.repair}
           </button>
           <button
             className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-stone-950 disabled:opacity-50"
-            disabled={progress !== null}
+            disabled={activeScan !== null}
             onClick={onRescan}
             type="button"
           >
-            Rescan
+            {scanLabels.rescan}
           </button>
           <div className="ml-2 flex rounded-lg border border-stone-700 p-1">
             {(["grid", "list"] as const).map((choice) => (

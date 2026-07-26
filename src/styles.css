@@ -96,6 +96,10 @@ html[data-theme="light"] .hover\:bg-stone-800:hover {
   background-color: #e7e5e4;
 }
 
+html[data-theme="light"] .enabled\:hover\:bg-stone-800:enabled:hover {
+  background-color: #e7e5e4;
+}
+
 html[data-theme="light"] .hover\:text-white:hover,
 html[data-theme="light"] .hover\:text-stone-100:hover,
 html[data-theme="light"] .hover\:text-stone-200:hover {

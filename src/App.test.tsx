@@ -11,6 +11,7 @@ import {
   isValidBookDisplayTitle,
   parseBookTags,
   resolveTheme,
+  scanButtonLabels,
   safeSearchSnippet,
   type Book,
 } from "./App";
@@ -58,6 +59,17 @@ describe("App", () => {
     expect(resolveTheme("dark")).toBe("dark");
     expect(resolveTheme("unknown")).toBe("dark");
     expect(resolveTheme(null)).toBe("dark");
+  });
+
+  it("labels rescan and cover repair independently", () => {
+    expect(scanButtonLabels("rescan")).toEqual({
+      repair: "Repair covers",
+      rescan: "Rescanning…",
+    });
+    expect(scanButtonLabels("repair")).toEqual({
+      repair: "Repair running…",
+      rescan: "Rescan",
+    });
   });
 
   it("does not overlay a healthy supported workspace", () => {
