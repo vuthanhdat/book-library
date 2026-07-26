@@ -2,6 +2,12 @@
 
 Define the image-folder reader for manga, scanned documents, and folders of ordered page images.
 
+## Status
+
+**Deferred by ADR-009.** Current M2 opens the cataloged image directory in the
+OS file manager. The embedded-reader design below is retained only as a possible
+future extension and is not an active product requirement.
+
 # Background
 
 The user stores manga and image-based books as folders containing numbered files such as `001.png`, `002.png`, and so on. These folders should behave like books without requiring conversion to PDF or archive formats.

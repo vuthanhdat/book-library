@@ -1,7 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const navigation = ["Library", "Recent", "Notes", "Search", "Settings"];
 
@@ -41,7 +47,7 @@ interface ScanSummary {
   cancelled: boolean;
 }
 
-interface Book {
+export interface Book {
   id: string;
   title: string;
   kind: "pdf_file" | "image_folder";
@@ -83,6 +89,13 @@ export function App() {
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [operationError, setOperationError] = useState<DesktopError | null>(null);
+  const [openingBookId, setOpeningBookId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const visibleBooks = useMemo(
+    () => filterCatalogBooks(books, deferredSearchQuery),
+    [books, deferredSearchQuery],
+  );
 
   const loadBooks = useCallback(async () => {
     setBooks(await invoke<Book[]>("list_library_books"));
@@ -160,6 +173,18 @@ export function App() {
     await invoke<boolean>("cancel_library_scan");
   };
 
+  const openBookLocation = async (book: Book) => {
+    setOperationError(null);
+    setOpeningBookId(book.id);
+    try {
+      await invoke<void>("open_book_location", { bookId: book.id });
+    } catch (error) {
+      setOperationError(desktopError(error));
+    } finally {
+      setOpeningBookId(null);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-stone-950 text-stone-100">
       <div className="mx-auto flex min-h-screen max-w-[1600px]">
@@ -212,14 +237,19 @@ export function App() {
                 />
               ) : (
                 <LibraryWorkspace
-                  books={books}
+                  books={visibleBooks}
                   error={operationError}
                   onCancel={() => void cancelScan()}
+                  onOpenBook={(book) => void openBookLocation(book)}
                   onRepair={() => void runScan("repair_library")}
                   onRescan={() => void runScan("rescan_library")}
+                  onSearchChange={setSearchQuery}
                   onViewChange={setView}
+                  openingBookId={openingBookId}
                   progress={scanProgress}
+                  searchQuery={searchQuery}
                   summary={scanSummary}
+                  totalBooks={books.length}
                   view={view}
                 />
               )}
@@ -264,21 +294,31 @@ function LibraryWorkspace({
   books,
   error,
   onCancel,
+  onOpenBook,
   onRepair,
   onRescan,
+  onSearchChange,
   onViewChange,
+  openingBookId,
   progress,
+  searchQuery,
   summary,
+  totalBooks,
   view,
 }: {
   books: Book[];
   error: DesktopError | null;
   onCancel: () => void;
+  onOpenBook: (book: Book) => void;
   onRepair: () => void;
   onRescan: () => void;
+  onSearchChange: (query: string) => void;
   onViewChange: (view: "grid" | "list") => void;
+  openingBookId: string | null;
   progress: ScanProgress | null;
+  searchQuery: string;
   summary: ScanSummary | null;
+  totalBooks: number;
   view: "grid" | "list";
 }) {
   return (
@@ -287,7 +327,9 @@ function LibraryWorkspace({
         <div>
           <p className="text-sm text-amber-400">Local catalog</p>
           <h1 className="mt-2 text-3xl font-semibold">
-            {books.length} {books.length === 1 ? "book" : "books"}
+            {searchQuery.trim()
+              ? `${books.length} of ${totalBooks} books`
+              : `${totalBooks} ${totalBooks === 1 ? "book" : "books"}`}
           </h1>
         </div>
         <div className="flex gap-2">
@@ -323,6 +365,31 @@ function LibraryWorkspace({
         </div>
       </header>
 
+      <div className="mt-6 flex items-center gap-3 rounded-xl border border-stone-700 bg-stone-900/70 px-4 py-3 focus-within:border-amber-500">
+        <span aria-hidden="true" className="text-stone-500">
+          ⌕
+        </span>
+        <input
+          aria-label="Search catalog"
+          autoComplete="off"
+          className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-stone-600"
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search title, folder, type, or status…"
+          spellCheck={false}
+          type="search"
+          value={searchQuery}
+        />
+        {searchQuery && (
+          <button
+            className="text-xs text-stone-400 hover:text-stone-200"
+            onClick={() => onSearchChange("")}
+            type="button"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       {progress && (
         <div className="mt-5 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4">
           <div className="flex items-center justify-between gap-4">
@@ -350,12 +417,20 @@ function LibraryWorkspace({
 
       {books.length === 0 && !progress ? (
         <div className="mt-24 text-center text-stone-500">
-          No supported books found yet. Try a rescan.
+          {searchQuery.trim()
+            ? `No books match “${searchQuery.trim()}”.`
+            : "No supported books found yet. Try a rescan."}
         </div>
       ) : (
         <div className={view === "grid" ? "book-grid mt-7" : "mt-7 space-y-2"}>
           {books.map((book) => (
-            <BookCard book={book} key={book.id} view={view} />
+            <BookCard
+              book={book}
+              isOpening={openingBookId === book.id}
+              key={book.id}
+              onOpen={() => onOpenBook(book)}
+              view={view}
+            />
           ))}
         </div>
       )}
@@ -363,7 +438,18 @@ function LibraryWorkspace({
   );
 }
 
-function BookCard({ book, view }: { book: Book; view: "grid" | "list" }) {
+function BookCard({
+  book,
+  isOpening,
+  onOpen,
+  view,
+}: {
+  book: Book;
+  isOpening: boolean;
+  onOpen: () => void;
+  view: "grid" | "list";
+}) {
+  const canOpen = book.status === "available" || book.status === "unavailable";
   const details = [
     book.kind === "pdf_file" ? "PDF" : "Images",
     book.pageCount ? `${book.pageCount} pages` : null,
@@ -382,6 +468,14 @@ function BookCard({ book, view }: { book: Book; view: "grid" | "list" }) {
           </p>
         </div>
         <p className="text-xs text-stone-400">{details}</p>
+        <button
+          className="rounded-lg border border-stone-700 px-3 py-2 text-xs text-stone-200 enabled:hover:border-amber-500 enabled:hover:text-amber-300 disabled:cursor-not-allowed disabled:text-stone-600"
+          disabled={!canOpen || isOpening}
+          onClick={onOpen}
+          type="button"
+        >
+          {isOpening ? "Opening…" : "Open folder"}
+        </button>
       </article>
     );
   }
@@ -393,8 +487,34 @@ function BookCard({ book, view }: { book: Book; view: "grid" | "list" }) {
       {book.status !== "available" && (
         <p className="mt-2 text-xs text-red-300">{book.status}</p>
       )}
+      <button
+        className="mt-3 w-full rounded-lg border border-stone-700 px-3 py-2 text-sm text-stone-200 enabled:hover:border-amber-500 enabled:hover:text-amber-300 disabled:cursor-not-allowed disabled:text-stone-600"
+        disabled={!canOpen || isOpening}
+        onClick={onOpen}
+        type="button"
+      >
+        {isOpening ? "Opening…" : "Open folder"}
+      </button>
     </article>
   );
+}
+
+export function filterCatalogBooks(books: Book[], query: string): Book[] {
+  const terms = query
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (terms.length === 0) return books;
+
+  return books.filter((book) => {
+    const kind = book.kind === "pdf_file" ? "pdf" : "images image folder";
+    const searchable = `${book.title} ${book.relativePath} ${kind} ${book.status}`
+      .normalize("NFKC")
+      .toLocaleLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
 }
 
 function Cover({ book, compact = false }: { book: Book; compact?: boolean }) {

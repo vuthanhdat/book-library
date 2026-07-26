@@ -86,16 +86,16 @@ feature remains `In Progress` until the required macOS Intel validation and merg
 M1 policy decisions are accepted in
 [ADR-008](../docs/adr/ADR-008-m1-library-policies.md).
 
-## M2 — Reading MVP backlog
+## Current execution queue — M2 External reading workflow
 
-| Backlog item | Feature IDs | Priority | Depends on | Outcome |
-|---|---|---|---|---|
-| M2-01 Reader contract | READ-001 | P0 | M1 catalog | Shared lifecycle/location model supports both book kinds and both platforms. |
-| M2-02 PDF reader | READ-002, READ-004, READ-006, READ-009 | P0 | M0 PDFium spike, M2-01 | PDF open/render/navigation/fit/rotation and error states work with native binaries on both targets. |
-| M2-03 Image reader | READ-003, READ-004, READ-005, READ-006, READ-007 | P0 | M1 image ordering, M2-01 | Single/continuous modes lazy-load ordered pages. |
-| M2-04 Reader ergonomics | READ-008 | P1 | M2-02, M2-03 | Fullscreen and keyboard shortcuts work consistently. |
-| M2-05 Reading state | PROG-001, PROG-002, PROG-003 | P0 | M2-01 | Progress saves with debouncing and resumes reliably. |
-| M2-06 Bookmarks | BOOKMARK-001, BOOKMARK-002, BOOKMARK-003 | P1 | M2-01, M2-05 | Bookmarks persist and navigate to saved locations. |
+Detailed tasks and acceptance criteria are in [Sprint 03](sprint-03.md).
+
+| Backlog item | Feature IDs | Priority | State | Depends on | Outcome |
+|---|---|---|---|---|---|
+| M2-01 Source-location use case | READ-001, READ-009 | P0 | Windows Done | M1 catalog | Resolve a book ID safely and open an authorized source directory. |
+| M2-02 Platform file-manager adapter | READ-001 | P0 | Windows Done | M2-01 | Windows Explorer opens the correct directory; macOS Finder shares the same port. |
+| M2-03 Catalog open interaction | READ-001, READ-009 | P0 | Windows Done | M2-01, M2-02 | Grid/list actions open folders and show honest typed errors. |
+| M2-04 Realtime catalog search | LIB-014 | P0 | Windows Done | M1 browser | Unicode multi-term filtering updates while typing without network or source I/O. |
 
 ## M3 — Knowledge MVP backlog
 
@@ -103,7 +103,7 @@ M1 policy decisions are accepted in
 |---|---|---|---|---|
 | M3-01 Notes-root configuration | NOTE-001 | P0 | M0 settings | Configure and validate a notes root. |
 | M3-02 Markdown file workflow | NOTE-002 | P0 | M3-01 | Create and conservatively edit portable notes. |
-| M3-03 Book/location associations | NOTE-003 | P0 | M2 locations, M3-02 | Notes link to books and reading locations. |
+| M3-03 Book associations | NOTE-003 | P0 | M1 catalog, M3-02 | Notes link to cataloged books; page-level locations remain deferred. |
 | M3-04 Markdown projection | NOTE-004, NOTE-005 | P0 | M3-02 | Parse metadata/links into rebuildable SQLite projections. |
 | M3-05 External interoperability | NOTE-006 | P1 | M3-01 | Open notes and folders in normal editors/Obsidian on both platforms. |
 | M3-06 Backlinks | NOTE-007 | P1 | M3-04 | Resolve and display basic backlinks. |
@@ -114,7 +114,7 @@ M1 policy decisions are accepted in
 | Backlog item | Feature IDs | Priority | Depends on | Outcome |
 |---|---|---|---|---|
 | M4-01 Search schema/projection | SEARCH-001 | P0 | M1 catalog, M3 projections | Rebuildable search documents and FTS5 schema exist. |
-| M4-02 Core indexing | SEARCH-002, SEARCH-003, SEARCH-004 | P0 | M4-01 | Books, notes, bookmarks, and tags are searchable offline. |
+| M4-02 Core indexing | SEARCH-002, SEARCH-003, SEARCH-004 | P0 | M4-01 | Books, notes, and tags are searchable offline. |
 | M4-03 Global search UI | SEARCH-005 | P0 | M4-02 | Query and result-type filters navigate to source items. |
 | M4-04 Incremental index queue | SEARCH-006 | P1 | M4-01, scan/note events | Changed content updates without a full rebuild. |
 | M4-05 Repair and diagnostics | SEARCH-007 | P1 | M4-01–M4-04 | User can rebuild and inspect failed documents. |

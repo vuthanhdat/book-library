@@ -2,6 +2,11 @@
 
 Define bookmark behavior across PDF and image-folder books.
 
+## Status
+
+**Deferred by ADR-009.** Embedded-reader bookmarks are not part of the current
+roadmap.
+
 # Background
 
 Bookmarks let the user save important reading locations without modifying source books. They should be simple, local, durable, and searchable. Bookmarks must work across reader types while allowing reader-specific location payloads.

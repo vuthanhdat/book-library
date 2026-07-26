@@ -9,11 +9,12 @@ use thiserror::Error;
 
 use crate::{
     application::{
-        ApplicationError, BookListItem, CatalogReconciliation, DatabaseHealth, DiscoveredBook,
-        LibraryConfiguration, LibraryConfigurationState, LibraryError, LibraryRepository,
-        ScanReason, ScanResult, ScanSummary, ThumbnailOutcome,
+        ApplicationError, BookListItem, BookLocationRepository, BookSourceLocation,
+        CatalogReconciliation, DatabaseHealth, DiscoveredBook, LibraryConfiguration,
+        LibraryConfigurationState, LibraryError, LibraryRepository, ScanReason, ScanResult,
+        ScanSummary, SourceLocationError, ThumbnailOutcome,
     },
-    domain::{BookId, BookStatus, LibraryId, RelativePath},
+    domain::{BookId, BookKind, BookStatus, LibraryId, RelativePath},
 };
 
 const DATABASE_FILENAME: &str = "book-library.sqlite3";
@@ -687,6 +688,49 @@ impl LibraryRepository for SqliteDatabase {
     }
 }
 
+impl BookLocationRepository for SqliteDatabase {
+    fn book_source_location(
+        &self,
+        book_id: BookId,
+    ) -> Result<Option<BookSourceLocation>, SourceLocationError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| SourceLocationError::RepositoryFailed)?;
+        let source: Option<(String, String, String, String)> = connection
+            .query_row(
+                "SELECT configured_libraries.root_path, books.kind,
+                        books.relative_path, books.status
+                 FROM books
+                 JOIN configured_libraries
+                   ON configured_libraries.id = books.library_id
+                 WHERE books.id = ?1",
+                [book_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|_| SourceLocationError::RepositoryFailed)?;
+
+        source
+            .map(|(root, kind, relative_path, status)| {
+                let kind = match kind.as_str() {
+                    "pdf_file" => BookKind::PdfFile,
+                    "image_folder" => BookKind::ImageFolder,
+                    _ => return Err(SourceLocationError::RepositoryFailed),
+                };
+                let relative_path = RelativePath::new(relative_path)
+                    .map_err(|_| SourceLocationError::RepositoryFailed)?;
+                Ok(BookSourceLocation {
+                    library_root: PathBuf::from(root),
+                    kind,
+                    relative_path,
+                    status,
+                })
+            })
+            .transpose()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -862,6 +906,13 @@ mod tests {
             .reconcile(configuration.id, &first_job, &scan)
             .unwrap();
         assert_eq!(first.added, 1);
+        let stored_source = database
+            .book_source_location(first.thumbnail_targets[0].0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored_source.kind, BookKind::PdfFile);
+        assert_eq!(stored_source.relative_path.as_str(), "Shelf/Book.pdf");
+        assert_eq!(stored_source.status, "available");
 
         {
             let connection = database.connection.lock().unwrap();

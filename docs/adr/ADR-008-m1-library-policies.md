@@ -64,6 +64,14 @@ Hidden/system entries, temporary files, and application-owned artifact
 directories are skipped. Unsupported ordinary files are ignored rather than
 creating one issue per file.
 
+### Derived image-book titles
+
+An eligible image folder normally derives its title from its own folder name.
+When that folder is named `pages` case-insensitively, it is treated as a wrapper
+used by page-capture workflows and derives its title from the immediate parent
+folder instead. Unicode spelling and punctuation, including Japanese brackets,
+are preserved exactly.
+
 ### Thumbnails
 
 Thumbnails are deterministic PNG files:

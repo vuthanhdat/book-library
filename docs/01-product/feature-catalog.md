@@ -27,7 +27,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 |---|---|
 | M0 — Engineering foundation | Runnable Windows 11 x64 and macOS Intel x64 Tauri/React/Rust shell, architecture boundaries, SQLite migrations, typed health flow, tests, and CI. |
 | M1 — Library MVP | Configure one root, scan PDFs and image folders, reconcile catalog records, generate thumbnails, and browse the library on both supported platforms. |
-| M2 — Reading MVP | Open PDF/image books, navigate, restore progress, and manage bookmarks on both supported platforms. |
+| M2 — External reading workflow | Find books live and open their source locations through the OS file manager on both supported platforms. |
 | M3 — Knowledge MVP | Create portable Markdown notes, associate them with books/locations, and support Obsidian interoperability. |
 | M4 — Search MVP | Search books, notes, bookmarks, tags, and supported extracted text using rebuildable local indexes. |
 | M5 — Reliability and release | Watch/recover/rebuild safely, validate large libraries, package Windows and macOS Intel releases, and protect upgrades. |
@@ -63,26 +63,27 @@ Design documents alone never justify `In Progress` or `Completed`.
 | LIB-011 | Manual rescan and projection repair | In Progress | M1 |
 | LIB-012 | Favorite books | Deferred | Post-MVP |
 | LIB-013 | Multiple libraries | Deferred | Post-MVP |
+| LIB-014 | Realtime catalog filtering by title, path, kind, and status | In Progress | M2 |
 
 ## Reader and reading state
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| READ-001 | Generic reader session and location contract | Planned | M2 |
-| READ-002 | Open and render PDF books through PDFium adapter | Planned | M2 |
-| READ-003 | Open image-folder books | Planned | M2 |
-| READ-004 | Next/previous page and direct page navigation | Planned | M2 |
-| READ-005 | Single-page and continuous image reading modes | Planned | M2 |
-| READ-006 | Zoom, fit width, fit height, and rotation | Planned | M2 |
-| READ-007 | Lazy loading and bounded page cache | Planned | M2 |
-| READ-008 | Fullscreen and keyboard shortcuts | Planned | M2 |
-| READ-009 | User-readable missing/corrupt/unsupported states | Planned | M2 |
-| PROG-001 | Debounced automatic progress save | Planned | M2 |
-| PROG-002 | Resume from last reading location | Planned | M2 |
-| PROG-003 | Recent books | Planned | M2 |
-| BOOKMARK-001 | Add bookmark at current location | Planned | M2 |
-| BOOKMARK-002 | Edit/delete bookmark | Planned | M2 |
-| BOOKMARK-003 | Per-book bookmark list and navigation | Planned | M2 |
+| READ-001 | Open a book's source location in the OS file manager | In Progress | M2 |
+| READ-002 | Open and render PDF books through PDFium adapter | Deferred | Post-MVP |
+| READ-003 | Open image-folder books in an embedded reader | Deferred | Post-MVP |
+| READ-004 | Next/previous page and direct page navigation | Deferred | Post-MVP |
+| READ-005 | Single-page and continuous image reading modes | Deferred | Post-MVP |
+| READ-006 | Zoom, fit width, fit height, and rotation | Deferred | Post-MVP |
+| READ-007 | Lazy loading and bounded page cache | Deferred | Post-MVP |
+| READ-008 | Fullscreen and keyboard shortcuts | Deferred | Post-MVP |
+| READ-009 | User-readable source-location availability errors | In Progress | M2 |
+| PROG-001 | Debounced automatic progress save | Deferred | Post-MVP |
+| PROG-002 | Resume from last reading location | Deferred | Post-MVP |
+| PROG-003 | Recent books | Deferred | Post-MVP |
+| BOOKMARK-001 | Add bookmark at current location | Deferred | Post-MVP |
+| BOOKMARK-002 | Edit/delete bookmark | Deferred | Post-MVP |
+| BOOKMARK-003 | Per-book bookmark list and navigation | Deferred | Post-MVP |
 | PROG-004 | Reading statistics and goals | Deferred | Post-MVP |
 
 ## Notes and knowledge
@@ -91,7 +92,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 |---|---|---|---|
 | NOTE-001 | Configure notes root | Planned | M3 |
 | NOTE-002 | Create and conservatively edit Markdown notes | Planned | M3 |
-| NOTE-003 | Associate notes with books and reading locations | Planned | M3 |
+| NOTE-003 | Associate notes with books | Planned | M3 |
 | NOTE-004 | Parse headings, tags, links, and YAML frontmatter | Planned | M3 |
 | NOTE-005 | Rebuildable SQLite note projection | Planned | M3 |
 | NOTE-006 | Open note/folder in external editor or Obsidian | Planned | M3 |
@@ -106,7 +107,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 | SEARCH-001 | FTS5 schema and search-document projection | Planned | M4 |
 | SEARCH-002 | Search books and bibliographic metadata | Planned | M4 |
 | SEARCH-003 | Search notes | Planned | M4 |
-| SEARCH-004 | Search bookmarks and tags | Planned | M4 |
+| SEARCH-004 | Search tags | Planned | M4 |
 | SEARCH-005 | Global search UI with result-type filters | Planned | M4 |
 | SEARCH-006 | Incremental indexing after scans/note edits | Planned | M4 |
 | SEARCH-007 | Reindex, repair, and failed-document diagnostics | Planned | M4 |

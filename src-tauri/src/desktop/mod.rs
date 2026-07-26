@@ -12,10 +12,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::{
     application::{
         ApplicationError, CancellationToken, ConfigureLibrary, GetApplicationStatus, LibraryError,
-        LibraryRepository, ReconcileCatalog, ScanProgress, ScanReason,
+        LibraryRepository, OpenBookLocation, ReconcileCatalog, ScanProgress, ScanReason,
+        SourceLocationError,
     },
+    domain::BookId,
     infrastructure::{
-        FilesystemScanner, LoggingGuard, SqliteDatabase, ThumbnailService, initialize_logging,
+        FilesystemScanner, LoggingGuard, SqliteDatabase, SystemFileManager, ThumbnailService,
+        initialize_logging,
     },
 };
 
@@ -23,6 +26,7 @@ struct BackendState {
     database: Arc<SqliteDatabase>,
     scanner: Arc<FilesystemScanner>,
     thumbnails: Arc<ThumbnailService>,
+    file_manager: Arc<SystemFileManager>,
     active_scan: Arc<Mutex<Option<CancellationToken>>>,
 }
 
@@ -134,6 +138,41 @@ impl From<LibraryError> for DesktopError {
             | LibraryError::CatalogFailed => Self {
                 code: "library_operation_failed",
                 message: "The library operation could not be completed.",
+            },
+        }
+    }
+}
+
+impl From<SourceLocationError> for DesktopError {
+    fn from(error: SourceLocationError) -> Self {
+        match error {
+            SourceLocationError::InvalidBookId => Self {
+                code: "invalid_book_id",
+                message: "The selected book identifier is invalid.",
+            },
+            SourceLocationError::BookNotFound => Self {
+                code: "book_not_found",
+                message: "The selected book is no longer in the catalog.",
+            },
+            SourceLocationError::SourceMissing => Self {
+                code: "book_source_missing",
+                message: "The selected book source is currently missing.",
+            },
+            SourceLocationError::SourceUnavailable => Self {
+                code: "book_source_unavailable",
+                message: "The selected book source is currently unavailable.",
+            },
+            SourceLocationError::InvalidSourcePath => Self {
+                code: "book_source_invalid",
+                message: "The selected book source path is not safe to open.",
+            },
+            SourceLocationError::RepositoryFailed => Self {
+                code: "catalog_read_failed",
+                message: "The selected catalog record could not be read.",
+            },
+            SourceLocationError::LaunchFailed => Self {
+                code: "file_manager_launch_failed",
+                message: "The operating system file manager could not be opened.",
             },
         }
     }
@@ -342,6 +381,18 @@ fn list_library_books(backend: State<'_, BackendState>) -> Result<Vec<BookRespon
         .collect())
 }
 
+#[tauri::command]
+fn open_book_location(
+    book_id: String,
+    backend: State<'_, BackendState>,
+) -> Result<(), DesktopError> {
+    let book_id = BookId::parse(&book_id)
+        .map_err(|_| DesktopError::from(SourceLocationError::InvalidBookId))?;
+    OpenBookLocation::new(backend.database.as_ref(), backend.file_manager.as_ref())
+        .execute(book_id)
+        .map_err(DesktopError::from)
+}
+
 pub(crate) fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -367,6 +418,7 @@ pub(crate) fn run() {
                     app_data_dir.join("cache"),
                     pdfium_directory,
                 )),
+                file_manager: Arc::new(SystemFileManager::new()),
                 active_scan: Arc::new(Mutex::new(None)),
             };
             tracing::info!(
@@ -388,7 +440,8 @@ pub(crate) fn run() {
             rescan_library,
             repair_library,
             cancel_library_scan,
-            list_library_books
+            list_library_books,
+            open_book_location
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Book Library");
@@ -402,9 +455,13 @@ mod tests {
     fn maps_application_errors_to_stable_safe_envelopes() {
         let database_error = DesktopError::from(ApplicationError::DatabaseUnavailable);
         let library_error = DesktopError::from(LibraryError::RootUnreadable);
+        let source_error = DesktopError::from(SourceLocationError::SourceMissing);
         assert_eq!(database_error.code, "database_unavailable");
         assert_eq!(library_error.code, "library_root_unreadable");
+        assert_eq!(source_error.code, "book_source_missing");
         assert!(!library_error.message.contains('\\'));
         assert!(!library_error.message.contains('/'));
+        assert!(!source_error.message.contains('\\'));
+        assert!(!source_error.message.contains('/'));
     }
 }

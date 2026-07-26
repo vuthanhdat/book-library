@@ -1,6 +1,8 @@
 # Documentation Guide
 
-This directory contains the product and technical specification for Book Library. The repository is currently documentation-first: application code has not been scaffolded yet.
+This directory contains the product and technical specification for Book
+Library. The repository contains the active Windows implementation; documents
+remain authoritative for scope, decisions, and delivery status.
 
 ## Source-of-truth hierarchy
 
@@ -52,7 +54,7 @@ The system architecture owns dependency direction, module ownership, initial cod
 - [Prioritized backlog](../planning/backlog.md)
 - [Sprint 01](../planning/sprint-01.md)
 - [Sprint 02](../planning/sprint-02.md)
-- [Sprint 02](../planning/sprint-02.md)
+- [Sprint 03](../planning/sprint-03.md)
 
 The implementation plan is the only roadmap document. The backlog decomposes milestones into slices, and the active sprint selects the work currently approved.
 
@@ -63,8 +65,8 @@ The implementation plan is the only roadmap document. The backlog decomposes mil
 | Product scope | Defined | Core reader and knowledge scope documented. |
 | Architecture baseline | Accepted | Desktop/offline/filesystem-first boundaries are fixed. |
 | Detailed module designs | Draft | Remaining questions become ADRs only when they block scheduled work. |
-| Application scaffold | In progress | Windows scaffold, domain, SQLite, status UI, logging, local quality gates, and native PDFium smoke pass; disposable Drive watcher testing, hosted CI, and macOS Intel evidence remain. |
-| Current delivery target | Sprint 02 | Windows M1 Library MVP complete; macOS Intel validation pending. |
+| Application scaffold | In progress | M0–revised M2 Windows implementation and local quality gates pass; hosted CI and macOS Intel evidence remain. |
+| Current delivery target | Sprint 03 | Windows external-open workflow and live catalog search complete; macOS Intel validation pending. |
 
 ## Documentation responsibilities
 

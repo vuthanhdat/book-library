@@ -75,5 +75,7 @@ Discovery fields:
 - PDF candidates and eligible direct-image folders are independent books, even
   in a mixed folder.
 - Folder hierarchy is context only; collection records are deferred.
+- An eligible folder named `pages` derives its display title from its immediate
+  parent while preserving the parent's Unicode spelling and punctuation.
 
 See ADR-008 for path identity and image-folder details.

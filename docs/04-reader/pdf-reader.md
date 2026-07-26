@@ -2,6 +2,12 @@
 
 Define the PDF reader module for rendering, navigating, bookmarking, and tracking progress in PDF books.
 
+## Status
+
+**Deferred by ADR-009.** Current M2 opens the PDF's containing directory in the
+OS file manager. The embedded-reader design below is retained only as a possible
+future extension and is not an active product requirement.
+
 # Background
 
 PDF files are a primary book type. The reader must be fast, stable, and isolated from catalog concerns. PDFium is the chosen rendering engine, but the rest of the application should depend on reader contracts rather than PDFium-specific details.

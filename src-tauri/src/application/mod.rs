@@ -3,6 +3,7 @@
 mod library;
 #[allow(dead_code)]
 mod operation;
+mod source_location;
 mod status;
 
 pub(crate) use library::{
@@ -13,6 +14,9 @@ pub(crate) use library::{
 };
 #[allow(unused_imports)]
 pub(crate) use operation::{CancellationToken, EventEnvelope, OperationId};
+pub(crate) use source_location::{
+    BookLocationRepository, BookSourceLocation, FileManager, OpenBookLocation, SourceLocationError,
+};
 pub(crate) use status::{
     ApplicationError, DatabaseHealth, GetApplicationStatus, LibraryConfiguration,
 };

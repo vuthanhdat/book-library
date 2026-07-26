@@ -2,9 +2,9 @@
 
 ## Status
 
-- **Current milestone:** M1 — Library MVP (Windows implementation pass)
-- **Current sprint:** [Sprint 02](sprint-02.md)
-- **Implementation state:** M0 and M1 Windows passes are complete locally; macOS Intel validation remains deferred by execution order
+- **Current milestone:** M2 — External reading workflow (Windows implementation pass)
+- **Current sprint:** [Sprint 03](sprint-03.md)
+- **Implementation state:** M0, M1, and revised M2 Windows passes are complete locally; macOS Intel validation remains deferred by execution order
 - **Feature status source:** [Feature catalog](../docs/01-product/feature-catalog.md)
 - **Technical decision source:** [Accepted ADRs](../docs/adr/README.md)
 
@@ -128,44 +128,45 @@ and thumbnail policy are settled by
 - source folders are byte-for-byte unaffected by scanning and thumbnail generation;
 - scan failures do not prevent successful books from appearing.
 
-## M2 — Reading MVP
+## M2 — External reading workflow
 
 ### Outcome
 
-The user can open PDF and image-folder books on either supported computer, navigate smoothly, close the app, and resume from the saved location.
+The user can find a cataloged book immediately and open its source directory in
+Windows Explorer or macOS Finder, then choose an external reading application.
 
 ### Required slice
 
-- generic reader session and location contracts;
-- production PDFium adapters/native packaging based on the M0 findings for both targets;
-- PDF open/render/navigation/zoom/fit/rotation;
-- image-folder single-page and continuous modes;
-- lazy loading and bounded page cache;
-- debounced current reading state;
-- recent books and resume reading;
-- create, edit, delete, list, and navigate bookmarks;
-- user-readable missing, corrupt, unsupported, password-protected, permission, and native-library states.
+- application use case resolving book ID to an authorized directory;
+- platform file-manager adapter behind a shared port;
+- PDF parent-directory and image-folder selection rules;
+- typed missing, unavailable, invalid-ID, and launch errors;
+- explicit catalog actions in grid and list views;
+- live Unicode-aware filtering of catalog metadata;
+- no source content modification or network dependency.
 
 ### Exit gate
 
-- both book kinds open from relative paths on Windows 11 x64 and macOS Intel x64;
-- reopen restores the expected page/location;
-- large books do not load all pages into memory;
-- reader failures remain isolated and do not crash the app;
-- bookmarks survive temporary source unavailability;
-- PDFium native loading and page rendering pass a real smoke fixture on both targets.
+- PDF and image-folder locations open correctly on both supported platforms;
+- React passes only a book ID and never opens an arbitrary path;
+- missing or unresolved records produce a recoverable state;
+- live search remains responsive on the validated large catalog;
+- external-open and search code do not modify source content;
+- full embedded reading, progress, and bookmarks remain explicitly deferred under
+  ADR-009.
 
 ## M3 — Knowledge MVP
 
 ### Outcome
 
-The user can create durable Markdown notes linked to books and reading locations and continue using those notes in normal editors or Obsidian.
+The user can create durable Markdown notes linked to cataloged books and continue
+using those notes in normal editors or Obsidian.
 
 ### Required slice
 
 - configure a notes root;
 - create and conservatively edit Markdown files;
-- associate notes with books, bookmarks, and locations;
+- associate notes with books;
 - parse CommonMark, YAML frontmatter, headings, tags, Markdown links, and wiki links;
 - build a rebuildable SQLite note projection;
 - open a note or notes folder externally;
@@ -176,7 +177,7 @@ The user can create durable Markdown notes linked to books and reading locations
 
 - default notes-root policy and whether it may be outside the library root;
 - internal editor scope versus external-editor-first workflow;
-- portable representation of book/location links in Markdown.
+- portable representation of book links in Markdown.
 
 ### Exit gate
 

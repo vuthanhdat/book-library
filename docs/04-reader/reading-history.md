@@ -2,6 +2,11 @@
 
 Define reading history, progress restoration, and session tracking.
 
+## Status
+
+**Deferred by ADR-009.** External reader applications own reading state; Book
+Library does not track progress in the current roadmap.
+
 # Background
 
 A personal reading platform should remember what the user was reading, where they stopped, and how their reading activity evolves over time. This state belongs in SQLite because it is operational metadata, not source book content.

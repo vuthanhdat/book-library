@@ -159,7 +159,17 @@ impl FilesystemScanner {
     fn title_from_path(path: &Path, kind: BookKind) -> String {
         let source = match kind {
             BookKind::PdfFile => path.file_stem(),
-            BookKind::ImageFolder => path.file_name(),
+            BookKind::ImageFolder => {
+                let folder_name = path.file_name();
+                if folder_name.is_some_and(|name| {
+                    name.to_str()
+                        .is_some_and(|value| value.eq_ignore_ascii_case("pages"))
+                }) {
+                    path.parent().and_then(Path::file_name).or(folder_name)
+                } else {
+                    folder_name
+                }
+            }
         };
         source
             .and_then(|name| name.to_str())
@@ -633,5 +643,27 @@ mod tests {
         assert_eq!(candidate.relative_path.as_str(), "Cloud only.pdf");
         assert_eq!(candidate.size_bytes, None);
         assert_eq!(candidate.modified_at_ms, None);
+    }
+
+    #[test]
+    fn pages_wrapper_uses_the_unicode_parent_folder_as_its_title() {
+        let root = TempDir::new().unwrap();
+        let expected_title = "「私」が主語になる人生のつくり方 脳の自動操縦から抜け出す7つの講義";
+        let pages = root.path().join(expected_title).join("pages");
+        fs::create_dir_all(&pages).unwrap();
+        fs::write(pages.join("page-0001.png"), b"image").unwrap();
+        fs::write(pages.join("page-0002.png"), b"image").unwrap();
+
+        let mut progress = |_| {};
+        let result = FilesystemScanner::new()
+            .scan(root.path(), &CancellationToken::default(), &mut progress)
+            .unwrap();
+
+        assert_eq!(result.books.len(), 1);
+        assert_eq!(result.books[0].title, expected_title);
+        assert_eq!(
+            result.books[0].relative_path.as_str(),
+            format!("{expected_title}/pages")
+        );
     }
 }

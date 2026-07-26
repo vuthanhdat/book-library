@@ -21,6 +21,7 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-006](ADR-006-rust-modular-monolith.md) | Accepted | Keep domain and application behavior in Rust using a modular-monolith structure for the first implementation. |
 | [ADR-007](ADR-007-supported-desktop-platforms.md) | Accepted | Require one shared codebase supporting Windows 11 x64 and macOS Intel x64 from M0. |
 | [ADR-008](ADR-008-m1-library-policies.md) | Accepted | Define M1 path identity, case, symlink, image-folder, and thumbnail policies. |
+| [ADR-009](ADR-009-external-reading-and-live-catalog-search.md) | Accepted | Open source locations in the OS file manager and search the catalog live instead of embedding a reader. |
 
 ## ADR format
 

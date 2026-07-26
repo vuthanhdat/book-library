@@ -4,10 +4,9 @@ Book Library is a desktop-first, offline-first application for managing and read
 
 The application treats the user's filesystem as the source of truth. It does not upload books, copy them into a database, or require a cloud account. A folder synchronized by Google Drive Desktop is treated as an ordinary local folder.
 
-> **Current status:** The Windows M1 Library MVP pass is complete. The app can
-> configure and scan a real library, catalog PDF/image-folder books, generate
-> rebuildable covers, and browse/rescan/repair the catalog. macOS Intel validation
-> remains deferred until the Windows version is finished.
+> **Current status:** The revised Windows M2 pass is complete. The app can
+> configure and scan a real library, search the catalog live, and open book
+> locations in Windows Explorer. macOS Intel validation remains deferred.
 
 ## Product scope
 
@@ -16,8 +15,8 @@ The first usable release will support:
 - selecting one local library root;
 - scanning PDF files and folders of ordered page images;
 - generating rebuildable thumbnails and metadata;
-- browsing and opening books;
-- restoring reading progress and bookmarks;
+- browsing books, searching the catalog live, and opening source folders in the
+  operating system file manager;
 - storing notes as portable Markdown files;
 - searching local metadata and notes with SQLite FTS5.
 

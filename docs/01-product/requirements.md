@@ -4,7 +4,7 @@ Capture product requirements for the first architecture-complete version of Book
 
 # Background
 
-The user stores books in a normal folder hierarchy and uses the application on both Windows 11 x64 and macOS Intel x64. Categories are represented by folders, not application-managed collections. PDF files are books. Folders containing ordered images are also books, especially for manga and scanned documents. Book Library should index and read these items while leaving files where they are.
+The user stores books in a normal folder hierarchy and uses the application on both Windows 11 x64 and macOS Intel x64. Categories are represented by folders, not application-managed collections. PDF files are books. Folders containing ordered images are also books, especially for manga and scanned documents. Book Library should index these items and open their source locations for external reader applications while leaving files where they are.
 
 # Requirements
 
@@ -16,7 +16,9 @@ Functional requirements:
 - Recognize folders containing image files as image-folder books.
 - Preserve relative paths as stable book identifiers.
 - Generate and cache thumbnails without modifying source folders unless configured.
-- Store metadata, reading history, bookmarks, and search indexes in SQLite.
+- Open a selected book's source location in the operating system file manager.
+- Filter the local catalog in real time by title, path, kind, and status.
+- Store metadata and rebuildable search indexes in SQLite when required.
 - Create and edit Markdown notes associated with books and topics.
 - Support Obsidian-compatible links and relative paths.
 - Provide offline full-text search using SQLite FTS5.
@@ -43,7 +45,12 @@ Non-functional requirements:
 
 # Architecture
 
-Requirements map to application use cases: initialize library, discover books, read book, track progress, manage notes, search library, run optional module. Each use case should be callable from Tauri commands and testable independently from React UI and the current operating system. Platform-specific filesystem, application-data, native PDFium, and packaging behavior must remain behind shared ports.
+Requirements map to application use cases: initialize library, discover books,
+open a source location, manage notes, search the catalog or knowledge base, and
+run an optional module. Each use case should be callable from Tauri commands and
+testable independently from React UI and the current operating system.
+Platform-specific filesystem, application-data, file-manager, native PDFium,
+and packaging behavior must remain behind shared ports.
 
 # Mermaid Diagram
 
@@ -56,7 +63,7 @@ flowchart TD
     DiscoverImages --> Metadata
     Metadata --> SQLite["Persist metadata"]
     Metadata --> Thumbnail["Generate thumbnails"]
-    SQLite --> Read["Open reader"]
+    SQLite --> Open["Open source folder"]
     SQLite --> Notes["Manage Markdown notes"]
     SQLite --> Search["Search with FTS5"]
 ```
@@ -70,8 +77,6 @@ Minimum required tables:
 - `book_files`: files belonging to a book, especially image pages.
 - `book_metadata`: optional bibliographic metadata.
 - `thumbnails`: cached thumbnail paths and generation state.
-- `reading_history`: sessions and current progress.
-- `bookmarks`: named reading locations.
 - `notes`: Markdown file references and note associations.
 - `search_index_queue`: pending indexing work.
 
