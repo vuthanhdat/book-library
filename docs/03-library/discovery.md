@@ -18,6 +18,8 @@ Scanning finds filesystem candidates. Discovery decides what those candidates me
 - Allow a user to replace the app-local display title without renaming the
   source; later scans preserve titles whose source is `user`.
 - Generate follow-up jobs for thumbnails, FTS indexing, and optional OCR.
+- Present the catalog in relative-path order so folder organization remains
+  visible; use title only as a secondary tie-breaker.
 
 # Responsibilities
 

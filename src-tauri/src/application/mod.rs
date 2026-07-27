@@ -13,7 +13,7 @@ mod status;
 
 pub(crate) use book_detail::{
     BookDetailError, BookDetailRecord, BookDetailRepository, BookThumbnailTarget, ForceBookCover,
-    GetBookDetail, LinkedBookNote, UpdateBookDetail,
+    GetBookDetail, LinkedBookNote, RepairBookCovers, UpdateBookDetail,
 };
 pub(crate) use book_metadata::{BookMetadataError, BookMetadataRepository, UpdateBookDisplayTitle};
 pub(crate) use book_relocation::{
@@ -23,7 +23,7 @@ pub(crate) use library::{
     BookListItem, CatalogReconciliation, ConfigureLibrary, DiscoveredBook,
     LibraryConfigurationState, LibraryError, LibraryRepository, LibraryScanner, ReconcileCatalog,
     ScanIssue, ScanProgress, ScanReason, ScanResult, ScanSummary, ThumbnailGenerator,
-    ThumbnailOutcome,
+    ThumbnailOutcome, ThumbnailProgressStage,
 };
 pub(crate) use notes::{
     ExternalPathOpener, MarkdownNotes, NoteBacklink, NoteDetail, NoteListItem, NoteProjection,

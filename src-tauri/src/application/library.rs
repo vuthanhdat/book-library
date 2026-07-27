@@ -28,6 +28,8 @@ pub(crate) enum LibraryError {
     CatalogFailed,
     #[error("thumbnail generation failed")]
     ThumbnailFailed,
+    #[error("thumbnail generation timed out")]
+    ThumbnailTimedOut,
 }
 
 #[derive(Debug, Clone)]
@@ -41,7 +43,6 @@ pub(crate) struct LibraryConfigurationState {
 pub(crate) enum ScanReason {
     Initial,
     Manual,
-    Repair,
 }
 
 impl ScanReason {
@@ -49,18 +50,11 @@ impl ScanReason {
         match self {
             Self::Initial => "initial",
             Self::Manual => "manual",
-            Self::Repair => "repair",
         }
     }
 }
 
-fn thumbnail_timeout(reason: ScanReason) -> Duration {
-    if matches!(reason, ScanReason::Repair) {
-        Duration::from_secs(30)
-    } else {
-        Duration::from_secs(1)
-    }
-}
+const THUMBNAIL_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScanProgress {
@@ -203,6 +197,39 @@ pub(crate) trait ThumbnailGenerator: Sync {
     ) -> Result<ThumbnailOutcome, LibraryError> {
         self.generate(root, book_id, book)
     }
+
+    fn generate_with_progress(
+        &self,
+        root: &Path,
+        book_id: BookId,
+        book: &DiscoveredBook,
+        timeout: std::time::Duration,
+        progress: &mut dyn FnMut(ThumbnailProgressStage),
+    ) -> Result<ThumbnailOutcome, LibraryError> {
+        progress(ThumbnailProgressStage::OpeningSource);
+        let outcome = self.generate_with_timeout(root, book_id, book, timeout)?;
+        progress(ThumbnailProgressStage::Completed);
+        Ok(outcome)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ThumbnailProgressStage {
+    OpeningSource,
+    RenderingFirstPage,
+    SavingCover,
+    Completed,
+}
+
+impl ThumbnailProgressStage {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::OpeningSource => "opening_source",
+            Self::RenderingFirstPage => "rendering_first_page",
+            Self::SavingCover => "saving_cover",
+            Self::Completed => "completed",
+        }
+    }
 }
 
 pub(crate) struct ConfigureLibrary<'a, Repository> {
@@ -271,13 +298,6 @@ where
             .repository
             .configuration()?
             .ok_or(LibraryError::NotConfigured)?;
-        let thumbnails_recovered = if matches!(reason, ScanReason::Repair) {
-            let recovered = self.repository.recover_thumbnails()?;
-            self.repository.invalidate_thumbnails()?;
-            recovered
-        } else {
-            0
-        };
         let job_id = self.repository.start_scan(configuration.id, reason)?;
         let scan = self
             .scanner
@@ -289,7 +309,6 @@ where
         let mut thumbnail_failures = 0;
 
         if !scan.cancelled {
-            let thumbnail_timeout = thumbnail_timeout(reason);
             for batch in reconciliation.thumbnail_targets.chunks(8) {
                 if cancellation.is_cancelled() {
                     break;
@@ -305,7 +324,7 @@ where
                                         &configuration.root,
                                         *book_id,
                                         book,
-                                        thumbnail_timeout,
+                                        THUMBNAIL_TIMEOUT,
                                     ),
                                 )
                             })
@@ -344,7 +363,7 @@ where
             updated: reconciliation.updated,
             missing: reconciliation.missing,
             issues: scan.issues.len() as u64,
-            thumbnails_recovered,
+            thumbnails_recovered: 0,
             thumbnails_generated: generated,
             thumbnail_failures,
             cancelled: scan.cancelled || cancellation.is_cancelled(),
@@ -359,18 +378,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn repair_allows_cloud_hydration_without_slowing_normal_scans() {
-        assert_eq!(
-            thumbnail_timeout(ScanReason::Repair),
-            Duration::from_secs(30)
-        );
-        assert_eq!(
-            thumbnail_timeout(ScanReason::Initial),
-            Duration::from_secs(1)
-        );
-        assert_eq!(
-            thumbnail_timeout(ScanReason::Manual),
-            Duration::from_secs(1)
-        );
+    fn normal_scan_cover_timeout_remains_short() {
+        assert_eq!(THUMBNAIL_TIMEOUT, Duration::from_secs(1));
     }
 }

@@ -20,12 +20,21 @@
    Markdown notes, and a 30-second explicit cover retry.
 9. Persistent light/dark theme selection and last-known-good cover replacement
    during repair or explicit retry.
-10. Repair retries only missing/error covers with a 30-second cloud hydration
-    window and reports cover successes and failures explicitly.
+10. Repair retries only books without a usable cover, including
+    cloud-unavailable sources, with a 30-second cloud hydration window and
+    reports cover successes and failures explicitly.
 11. Repair restores decodable app-data covers whose catalog link was lost
     before retrying source rendering, and reports restored covers separately.
-12. Repair gives locally present cloud-backed PDFs two seconds for identity
-    probing before classifying them as unavailable; normal rescans remain fast.
+12. Repair reads missing-cover targets from the catalog without scanning the
+    library filesystem; normal rescans retain their short identity probe.
+13. Cover cache filenames stay bounded for unavailable books with long source
+    paths, and Force cover reports timeout separately from render/save failure.
+14. A panicked PDF worker no longer poisons the shared render lock and disables
+    subsequent Force or Repair attempts.
+15. Book Detail displays a live Force cover log for source hydration, first-page
+    rendering, app-data saving, completion, and failure.
+16. Library browsing orders books by normalized relative path, then by title,
+    keeping books from the same source folder together.
 
 ## Windows acceptance
 
@@ -41,8 +50,15 @@
   cover, and failed bulk repairs preserve all last-known-good cover references.
 - orphaned but valid app-data covers are relinked without reading or changing
   source books.
-- a locally present PDF that needs more than 250 milliseconds for its first
-  read can still enter Repair's cover-generation queue.
+- an available or cloud-unavailable catalog book without a cover can enter
+  Repair's queue without a discovery rescan.
+- long Unicode source paths cannot become nested or overlong cover-cache paths.
+- a failed PDF worker is isolated; a later cover attempt can acquire a recovered
+  render lock with fresh document state on the process-lifetime PDFium binding.
+- two or more PDF covers can be rendered sequentially without restarting the
+  application or attempting to initialize PDFium bindings again.
+- a user can see the last completed Force cover stage instead of receiving only
+  an opaque final error.
 
 ## Verification evidence
 

@@ -22,14 +22,9 @@ const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 const DIRECTORY_BATCH_SIZE: usize = 8;
 const DIRECTORY_READ_TIMEOUT: Duration = Duration::from_millis(500);
 const PDF_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
-const REPAIR_PDF_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-fn pdf_probe_timeout(reason: ScanReason) -> Duration {
-    if matches!(reason, ScanReason::Repair) {
-        REPAIR_PDF_PROBE_TIMEOUT
-    } else {
-        PDF_PROBE_TIMEOUT
-    }
+fn pdf_probe_timeout(_reason: ScanReason) -> Duration {
+    PDF_PROBE_TIMEOUT
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -704,11 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn repair_allows_a_longer_pdf_probe_without_slowing_manual_scans() {
-        assert_eq!(
-            pdf_probe_timeout(ScanReason::Repair),
-            Duration::from_secs(2)
-        );
+    fn normal_scan_uses_a_short_pdf_probe() {
         assert_eq!(
             pdf_probe_timeout(ScanReason::Manual),
             Duration::from_millis(250)

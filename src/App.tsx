@@ -36,6 +36,28 @@ interface ScanProgress {
   currentRelativePath: string | null;
 }
 
+interface CoverProgress {
+  bookId: string;
+  stage:
+    | "opening_source"
+    | "rendering_first_page"
+    | "saving_cover"
+    | "completed";
+}
+
+export function coverProgressMessage(stage: CoverProgress["stage"]) {
+  switch (stage) {
+    case "opening_source":
+      return "Opening the source file and waiting for local availability…";
+    case "rendering_first_page":
+      return "Source opened. Rendering the first page…";
+    case "saving_cover":
+      return "First page rendered. Saving the cover to app data…";
+    case "completed":
+      return "Cover generated successfully.";
+  }
+}
+
 interface ScanSummary {
   discovered: number;
   added: number;
@@ -186,6 +208,7 @@ export function App() {
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [activeScan, setActiveScan] = useState<ActiveScan | null>(null);
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
+  const [scanSummaryKind, setScanSummaryKind] = useState<ActiveScan | null>(null);
   const [operationError, setOperationError] = useState<DesktopError | null>(null);
   const [openingBookId, setOpeningBookId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -197,6 +220,7 @@ export function App() {
   const [bookDetailBusy, setBookDetailBusy] = useState(false);
   const [bookDetailError, setBookDetailError] =
     useState<DesktopError | null>(null);
+  const [coverProgress, setCoverProgress] = useState<string[]>([]);
   const [activeSection, setActiveSection] = useState<
     "Library" | "Notes" | "Search"
   >("Library");
@@ -232,6 +256,20 @@ export function App() {
   const loadBooks = useCallback(async () => {
     setBooks(await invoke<Book[]>("list_library_books"));
   }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<CoverProgress>("book_cover_progressed", (event) => {
+      if (event.payload.bookId !== selectedBookDetail?.id) return;
+      setCoverProgress((current) => [
+        ...current,
+        coverProgressMessage(event.payload.stage),
+      ]);
+    }).then((stop) => {
+      unlisten = stop;
+    });
+    return () => unlisten?.();
+  }, [selectedBookDetail?.id]);
 
   const loadNotes = useCallback(async () => {
     setNotes(await invoke<NoteListItem[]>("list_notes"));
@@ -307,6 +345,7 @@ export function App() {
           ? "rescan"
           : "initial";
     setActiveScan(scanKind);
+    setScanSummaryKind(scanKind);
     setOperationError(null);
     setScanSummary(null);
     setScanProgress({
@@ -422,6 +461,7 @@ export function App() {
   const openBookDetail = async (bookId: string) => {
     setBookDetailBusy(true);
     setBookDetailError(null);
+    setCoverProgress([]);
     try {
       setSelectedBookDetail(
         await invoke<BookDetail>("get_book_detail", { bookId }),
@@ -459,6 +499,7 @@ export function App() {
     if (!selectedBookDetail) return;
     setBookDetailBusy(true);
     setBookDetailError(null);
+    setCoverProgress(["Cover generation requested."]);
     try {
       const detail = await invoke<BookDetail>("force_book_cover", {
         bookId: selectedBookDetail.id,
@@ -466,7 +507,12 @@ export function App() {
       setSelectedBookDetail(detail);
       await loadBooks();
     } catch (error) {
-      setBookDetailError(desktopError(error));
+      const detailError = desktopError(error);
+      setBookDetailError(detailError);
+      setCoverProgress((current) => [
+        ...current,
+        `Failed: ${detailError.message}`,
+      ]);
     } finally {
       setBookDetailBusy(false);
     }
@@ -690,6 +736,7 @@ export function App() {
               ) : selectedBookDetail ? (
                 <BookDetailPage
                   busy={bookDetailBusy}
+                  coverProgress={coverProgress}
                   detail={selectedBookDetail}
                   error={bookDetailError}
                   onBack={() => setSelectedBookDetail(null)}
@@ -736,6 +783,7 @@ export function App() {
                   progress={scanProgress}
                   searchQuery={searchQuery}
                   summary={scanSummary}
+                  summaryKind={scanSummaryKind}
                   totalBooks={books.length}
                   view={view}
                 />
@@ -1290,6 +1338,7 @@ function SetupLibrary({
 
 export function BookDetailPage({
   busy,
+  coverProgress,
   detail,
   error,
   onBack,
@@ -1301,6 +1350,7 @@ export function BookDetailPage({
   onSave,
 }: {
   busy: boolean;
+  coverProgress: string[];
   detail: BookDetail;
   error: DesktopError | null;
   onBack: () => void;
@@ -1351,6 +1401,23 @@ export function BookDetailPage({
             previous cover remains visible if this attempt fails. Generated
             covers are stored in the app data folder across restarts.
           </p>
+          {coverProgress.length > 0 && (
+            <div
+              aria-live="polite"
+              className="mt-3 rounded-lg border border-stone-800 bg-stone-900/60 p-3"
+            >
+              <p className="text-xs font-medium text-stone-300">
+                Cover generation log
+              </p>
+              <ol className="mt-2 space-y-1 text-xs leading-5 text-stone-500">
+                {coverProgress.map((entry, index) => (
+                  <li key={`${index}-${entry}`}>
+                    {index + 1}. {entry}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </section>
 
         <section className="min-w-0">
@@ -1533,6 +1600,7 @@ function LibraryWorkspace({
   progress,
   searchQuery,
   summary,
+  summaryKind,
   totalBooks,
   view,
 }: {
@@ -1552,6 +1620,7 @@ function LibraryWorkspace({
   progress: ScanProgress | null;
   searchQuery: string;
   summary: ScanSummary | null;
+  summaryKind: ActiveScan | null;
   totalBooks: number;
   view: "grid" | "list";
 }) {
@@ -1631,8 +1700,9 @@ function LibraryWorkspace({
         <div className="mt-5 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4">
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-amber-200">
-              Scanned {progress.visitedEntries.toLocaleString()} entries · found{" "}
-              {progress.discoveredBooks.toLocaleString()} books
+              {activeScan === "repair"
+                ? `Processed ${progress.visitedEntries.toLocaleString()} of ${progress.discoveredBooks.toLocaleString()} missing covers`
+                : `Scanned ${progress.visitedEntries.toLocaleString()} entries · found ${progress.discoveredBooks.toLocaleString()} books`}
             </p>
             <button
               className="text-sm text-amber-300 underline"
@@ -1649,7 +1719,7 @@ function LibraryWorkspace({
           )}
         </div>
       )}
-      {summary && <SummaryPanel summary={summary} />}
+      {summary && <SummaryPanel kind={summaryKind} summary={summary} />}
       {error && <ErrorPanel error={error} />}
 
       {books.length === 0 && !progress ? (
@@ -1984,7 +2054,23 @@ function Cover({ book, compact = false }: { book: Book; compact?: boolean }) {
   );
 }
 
-function SummaryPanel({ summary }: { summary: ScanSummary }) {
+function SummaryPanel({
+  kind,
+  summary,
+}: {
+  kind: ActiveScan | null;
+  summary: ScanSummary;
+}) {
+  if (kind === "repair") {
+    return (
+      <div className="mt-5 rounded-xl border border-stone-800 bg-stone-900/60 p-4 text-sm text-stone-300">
+        {summary.cancelled ? "Cover repair cancelled." : "Cover repair complete."}{" "}
+        {summary.thumbnailsRecovered} recovered from cache. {summary.discovered}{" "}
+        missing covers queued: {summary.thumbnailsGenerated} generated,{" "}
+        {summary.thumbnailFailures} failed.
+      </div>
+    );
+  }
   return (
     <div className="mt-5 rounded-xl border border-stone-800 bg-stone-900/60 p-4 text-sm text-stone-300">
       {summary.cancelled ? "Scan cancelled." : "Scan complete."}{" "}

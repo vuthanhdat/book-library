@@ -4,7 +4,10 @@ use thiserror::Error;
 
 use crate::domain::BookId;
 
-use super::{DiscoveredBook, LibraryRepository, ThumbnailGenerator};
+use super::{
+    CancellationToken, DiscoveredBook, LibraryError, LibraryRepository, ScanProgress,
+    ThumbnailGenerator, ThumbnailProgressStage,
+};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub(crate) enum BookDetailError {
@@ -18,6 +21,8 @@ pub(crate) enum BookDetailError {
     SourceUnavailable,
     #[error("the cover could not be generated")]
     CoverFailed,
+    #[error("cover generation timed out")]
+    CoverTimedOut,
     #[error("book detail persistence failed")]
     RepositoryFailed,
 }
@@ -63,6 +68,7 @@ pub(crate) trait BookDetailRepository {
         &self,
         book_id: BookId,
     ) -> Result<Option<BookThumbnailTarget>, BookDetailError>;
+    fn books_without_cover(&self) -> Result<Vec<BookId>, BookDetailError>;
 }
 
 pub(crate) struct GetBookDetail<'a, Repository> {
@@ -140,7 +146,11 @@ where
         }
     }
 
-    pub(crate) fn execute(&self, book_id: BookId) -> Result<(), BookDetailError> {
+    pub(crate) fn execute_with_progress(
+        &self,
+        book_id: BookId,
+        progress: &mut dyn FnMut(ThumbnailProgressStage),
+    ) -> Result<(), BookDetailError> {
         let target = self
             .repository
             .book_thumbnail_target(book_id)?
@@ -150,10 +160,95 @@ where
         }
         let outcome = self
             .generator
-            .generate_with_timeout(&target.root, book_id, &target.book, Duration::from_secs(30))
-            .map_err(|_| BookDetailError::CoverFailed)?;
+            .generate_with_progress(
+                &target.root,
+                book_id,
+                &target.book,
+                Duration::from_secs(30),
+                progress,
+            )
+            .map_err(|error| match error {
+                LibraryError::ThumbnailTimedOut => BookDetailError::CoverTimedOut,
+                _ => BookDetailError::CoverFailed,
+            })?;
         self.repository
             .save_thumbnail(book_id, &outcome)
             .map_err(|_| BookDetailError::RepositoryFailed)
+    }
+}
+
+pub(crate) struct RepairBookCovers<'a, Repository, Generator> {
+    repository: &'a Repository,
+    generator: &'a Generator,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CoverRepairSummary {
+    pub(crate) targets: u64,
+    pub(crate) recovered: u64,
+    pub(crate) generated: u64,
+    pub(crate) failures: u64,
+    pub(crate) cancelled: bool,
+}
+
+impl<'a, Repository, Generator> RepairBookCovers<'a, Repository, Generator>
+where
+    Repository: BookDetailRepository + LibraryRepository,
+    Generator: ThumbnailGenerator,
+{
+    pub(crate) fn new(repository: &'a Repository, generator: &'a Generator) -> Self {
+        Self {
+            repository,
+            generator,
+        }
+    }
+
+    pub(crate) fn execute(
+        &self,
+        cancellation: &CancellationToken,
+        progress: &mut dyn FnMut(ScanProgress),
+    ) -> Result<CoverRepairSummary, LibraryError> {
+        let recovered = self.repository.recover_thumbnails()?;
+        self.repository.invalidate_thumbnails()?;
+        let targets = self
+            .repository
+            .books_without_cover()
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        let total = targets.len() as u64;
+        let mut generated = 0_u64;
+        let mut failures = 0_u64;
+
+        progress(ScanProgress {
+            visited_entries: 0,
+            discovered_books: total,
+            current_relative_path: None,
+        });
+        for book_id in targets {
+            if cancellation.is_cancelled() {
+                break;
+            }
+            let result = ForceBookCover::new(self.repository, self.generator)
+                .execute_with_progress(book_id, &mut |_| {});
+            if result.is_ok() {
+                generated += 1;
+            } else {
+                failures += 1;
+                self.repository
+                    .save_thumbnail_failure(book_id, "thumbnail_failed")?;
+            }
+            progress(ScanProgress {
+                visited_entries: generated + failures,
+                discovered_books: total,
+                current_relative_path: None,
+            });
+        }
+
+        Ok(CoverRepairSummary {
+            targets: total,
+            recovered,
+            generated,
+            failures,
+            cancelled: cancellation.is_cancelled(),
+        })
     }
 }

@@ -13,7 +13,8 @@ Feature IDs, status, and milestone assignment are authoritative in the [feature 
 | Configure library | `LIB-001` | Select one local root and initialize application-owned metadata safely. | [`03-library/initialization.md`](../03-library/initialization.md) |
 | Scan and reconcile library | `LIB-002`–`LIB-009` | Discover PDFs and image-folder books, reconcile changes, extract metadata, and generate rebuildable thumbnails without modifying source files. | [`03-library/`](../03-library/) |
 | Browse catalog | `LIB-010` | View discovered books, status, cover, type, and folder context. | Feature catalog and active sprint/backlog |
-| Rescan or repair catalog | `LIB-011` | Refresh changed content and rebuild derived catalog or thumbnail state safely. | [`03-library/`](../03-library/) |
+| Rescan catalog | `LIB-011` | Refresh changed content and rebuild derived catalog state safely. | [`03-library/`](../03-library/) |
+| Repair missing covers | `LIB-011` | Retry catalog books without a usable cover, one at a time, without rescanning source folders. | [`03-library/thumbnail.md`](../03-library/thumbnail.md) |
 | Open book source location | `READ-001`, `READ-009` | Open a PDF's containing directory or an image book's directory in the OS file manager. | [ADR-009](../adr/ADR-009-external-reading-and-live-catalog-search.md) |
 | Filter catalog live | `LIB-014` | Narrow visible books immediately by title, relative path, kind, or status. | [ADR-009](../adr/ADR-009-external-reading-and-live-catalog-search.md) |
 | Edit book display title | `LIB-015` | Correct one catalog title immediately without rescanning or modifying its source path. | [`03-library/discovery.md`](../03-library/discovery.md) |

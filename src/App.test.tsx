@@ -138,6 +138,10 @@ describe("App", () => {
     const markup = renderToStaticMarkup(
       <BookDetailPage
         busy={false}
+        coverProgress={[
+          "Opening the source file and waiting for local availability…",
+          "Source opened. Rendering the first page…",
+        ]}
         detail={{
           ...books[0],
           readingStatus: "reading",
@@ -157,6 +161,8 @@ describe("App", () => {
 
     expect(markup).toContain("Book detail");
     expect(markup).toContain("Force cover generation");
+    expect(markup).toContain("Cover generation log");
+    expect(markup).toContain("Rendering the first page");
     expect(markup).toContain("Reading status");
     expect(markup).toContain("Key ideas");
   });
@@ -165,6 +171,7 @@ describe("App", () => {
     const markup = renderToStaticMarkup(
       <BookDetailPage
         busy={false}
+        coverProgress={[]}
         detail={{
           ...books[0],
           status: "unavailable",

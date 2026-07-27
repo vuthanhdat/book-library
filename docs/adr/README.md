@@ -25,6 +25,7 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-010](ADR-010-m3-markdown-notes-policy.md) | Accepted | Keep M3 notes portable with a configurable root, conservative editor, relative book links, rebuildable projections, and explicit refresh. |
 | [ADR-011](ADR-011-missing-source-recovery-and-m4-search.md) | Accepted | Recover missing sources only through authorized explicit relinking and use rebuildable trigram FTS5 for M4. |
 | [ADR-012](ADR-012-book-detail-and-explicit-cover-retry.md) | Accepted | Add app-local book workflow metadata and retry one cloud-backed cover explicitly without slowing normal scans. |
+| [ADR-013](ADR-013-bulk-cover-repair-targets.md) | Accepted | Treat Repair as a batch Force retry for books that have no usable cover. |
 
 ## ADR format
 

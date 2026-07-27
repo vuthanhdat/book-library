@@ -15,9 +15,10 @@ use crate::{
         BookRelocationError, CancellationToken, ConfigureLibrary, ForceBookCover,
         GetApplicationStatus, GetBookDetail, LibraryError, LibraryRepository, NoteDetail,
         NoteListItem, NotesError, NotesRefreshSummary, NotesRepository, NotesWorkspace,
-        OpenBookLocation, ReconcileCatalog, RelinkMissingBook, ScanProgress, ScanReason,
-        SearchDiagnostics, SearchError, SearchLibrary, SearchRebuildSummary, SearchRepository,
-        SearchResultItem, SourceLocationError, UpdateBookDetail, UpdateBookDisplayTitle,
+        OpenBookLocation, ReconcileCatalog, RelinkMissingBook, RepairBookCovers, ScanProgress,
+        ScanReason, SearchDiagnostics, SearchError, SearchLibrary, SearchRebuildSummary,
+        SearchRepository, SearchResultItem, SourceLocationError, ThumbnailProgressStage,
+        UpdateBookDetail, UpdateBookDisplayTitle,
     },
     domain::{BookId, NoteId},
     infrastructure::{
@@ -63,6 +64,13 @@ struct ScanProgressResponse {
     visited_entries: u64,
     discovered_books: u64,
     current_relative_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CoverProgressResponse {
+    book_id: String,
+    stage: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -246,6 +254,10 @@ impl From<LibraryError> for DesktopError {
                 code: "thumbnail_failed",
                 message: "A thumbnail could not be generated.",
             },
+            LibraryError::ThumbnailTimedOut => Self {
+                code: "thumbnail_timeout",
+                message: "Thumbnail generation timed out.",
+            },
             LibraryError::ConfigurationFailed
             | LibraryError::ScanFailed
             | LibraryError::CatalogFailed => Self {
@@ -331,6 +343,10 @@ impl From<BookDetailError> for DesktopError {
             },
             BookDetailError::CoverFailed => Self {
                 code: "cover_generation_failed",
+                message: "The cover could not be rendered or saved.",
+            },
+            BookDetailError::CoverTimedOut => Self {
+                code: "cover_generation_timeout",
                 message: "The cover could not be generated within 30 seconds.",
             },
             BookDetailError::RepositoryFailed => Self {
@@ -721,19 +737,78 @@ async fn initialize_library(
     .await
 }
 
+async fn execute_cover_repair(
+    app: AppHandle,
+    database: Arc<SqliteDatabase>,
+    thumbnails: Arc<ThumbnailService>,
+    active_scan: Arc<Mutex<Option<CancellationToken>>>,
+) -> Result<ScanSummaryResponse, DesktopError> {
+    let cancellation = CancellationToken::default();
+    {
+        let mut active = active_scan.lock().map_err(|_| DesktopError {
+            code: "scan_state_failed",
+            message: "The cover repair state is unavailable.",
+        })?;
+        if active.is_some() {
+            return Err(DesktopError {
+                code: "scan_already_running",
+                message: "A library operation is already running.",
+            });
+        }
+        *active = Some(cancellation.clone());
+    }
+
+    let progress_app = app.clone();
+    let repair_database = Arc::clone(&database);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut progress = |value: ScanProgress| {
+            if let Err(error) = progress_app.emit(
+                "library_scan_progressed",
+                ScanProgressResponse {
+                    visited_entries: value.visited_entries,
+                    discovered_books: value.discovered_books,
+                    current_relative_path: None,
+                },
+            ) {
+                tracing::warn!(event = "cover_repair_progress_emit_failed", error = %error);
+            }
+        };
+        RepairBookCovers::new(repair_database.as_ref(), thumbnails.as_ref())
+            .execute(&cancellation, &mut progress)
+    })
+    .await
+    .map_err(|_| DesktopError {
+        code: "cover_repair_task_failed",
+        message: "The cover repair worker stopped unexpectedly.",
+    })?;
+
+    if let Ok(mut active) = active_scan.lock() {
+        *active = None;
+    }
+    let summary = result.map_err(DesktopError::from)?;
+    Ok(ScanSummaryResponse {
+        discovered: summary.targets,
+        added: 0,
+        updated: 0,
+        missing: 0,
+        issues: 0,
+        thumbnails_recovered: summary.recovered,
+        thumbnails_generated: summary.generated,
+        thumbnail_failures: summary.failures,
+        cancelled: summary.cancelled,
+    })
+}
+
 #[tauri::command]
 async fn repair_library(
     app: AppHandle,
     backend: State<'_, BackendState>,
 ) -> Result<ScanSummaryResponse, DesktopError> {
-    execute_scan(
+    execute_cover_repair(
         app,
         Arc::clone(&backend.database),
-        Arc::clone(&backend.scanner),
         Arc::clone(&backend.thumbnails),
-        Arc::clone(&backend.markdown_notes),
         Arc::clone(&backend.active_scan),
-        ScanReason::Repair,
     )
     .await
 }
@@ -842,6 +917,7 @@ fn update_book_detail(
 
 #[tauri::command]
 async fn force_book_cover(
+    app: AppHandle,
     book_id: String,
     backend: State<'_, BackendState>,
 ) -> Result<BookDetailResponse, DesktopError> {
@@ -849,8 +925,27 @@ async fn force_book_cover(
         BookId::parse(&book_id).map_err(|_| DesktopError::from(BookDetailError::BookNotFound))?;
     let database = Arc::clone(&backend.database);
     let thumbnails = Arc::clone(&backend.thumbnails);
+    let progress_app = app.clone();
+    let progress_book_id = book_id.to_string();
     tauri::async_runtime::spawn_blocking(move || {
-        ForceBookCover::new(database.as_ref(), thumbnails.as_ref()).execute(book_id)
+        let mut progress = |stage: ThumbnailProgressStage| {
+            tracing::info!(
+                event = "book_cover_progressed",
+                book_id = %progress_book_id,
+                stage = stage.as_str()
+            );
+            if let Err(error) = progress_app.emit(
+                "book_cover_progressed",
+                CoverProgressResponse {
+                    book_id: progress_book_id.clone(),
+                    stage: stage.as_str(),
+                },
+            ) {
+                tracing::warn!(event = "book_cover_progress_emit_failed", error = %error);
+            }
+        };
+        ForceBookCover::new(database.as_ref(), thumbnails.as_ref())
+            .execute_with_progress(book_id, &mut progress)
     })
     .await
     .map_err(|_| DesktopError {
@@ -1135,9 +1230,15 @@ mod tests {
         let database_error = DesktopError::from(ApplicationError::DatabaseUnavailable);
         let library_error = DesktopError::from(LibraryError::RootUnreadable);
         let source_error = DesktopError::from(SourceLocationError::SourceUnavailable);
+        let cover_error = DesktopError::from(BookDetailError::CoverFailed);
+        let cover_timeout = DesktopError::from(BookDetailError::CoverTimedOut);
         assert_eq!(database_error.code, "database_unavailable");
         assert_eq!(library_error.code, "library_root_unreadable");
         assert_eq!(source_error.code, "book_source_unavailable");
+        assert_eq!(cover_error.code, "cover_generation_failed");
+        assert_eq!(cover_timeout.code, "cover_generation_timeout");
+        assert!(!cover_error.message.contains("30 seconds"));
+        assert!(cover_timeout.message.contains("30 seconds"));
         assert!(!library_error.message.contains('\\'));
         assert!(!library_error.message.contains('/'));
         assert!(!source_error.message.contains('\\'));

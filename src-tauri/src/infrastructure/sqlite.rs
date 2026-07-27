@@ -915,7 +915,8 @@ impl LibraryRepository for SqliteDatabase {
             .prepare(
                 "SELECT id, title, kind, relative_path, status, page_count,
                         size_bytes, modified_at_ms, thumbnail_cache_path, thumbnail_status
-                 FROM books ORDER BY title COLLATE NOCASE, relative_path",
+                 FROM books
+                 ORDER BY relative_path COLLATE NOCASE, title COLLATE NOCASE",
             )
             .map_err(|_| LibraryError::CatalogFailed)?;
         let rows = statement
@@ -941,17 +942,68 @@ impl LibraryRepository for SqliteDatabase {
     }
 
     fn invalidate_thumbnails(&self) -> Result<(), LibraryError> {
-        let connection = self
+        let mut connection = self
             .connection
             .lock()
             .map_err(|_| LibraryError::CatalogFailed)?;
-        connection
+        let referenced_covers = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT id, thumbnail_cache_path
+                     FROM books
+                     WHERE status IN ('available', 'unavailable')
+                       AND thumbnail_cache_path IS NOT NULL",
+                )
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|_| LibraryError::CatalogFailed)?
+        };
+        let canonical_cache_root = self.cache_root.canonicalize().ok();
+        let invalid_book_ids = referenced_covers
+            .into_iter()
+            .filter_map(|(book_id, cache_relative_path)| {
+                let valid = RelativePath::new(&cache_relative_path)
+                    .ok()
+                    .map(|relative| self.cache_root.join(relative.as_str()))
+                    .and_then(|path| path.canonicalize().ok())
+                    .is_some_and(|path| {
+                        canonical_cache_root
+                            .as_ref()
+                            .is_some_and(|root| path.starts_with(root))
+                            && image::open(path).is_ok()
+                    });
+                (!valid).then_some(book_id)
+            })
+            .collect::<Vec<_>>();
+
+        let transaction = connection
+            .transaction()
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        for book_id in invalid_book_ids {
+            transaction
+                .execute(
+                    "UPDATE books
+                     SET thumbnail_cache_path = NULL, thumbnail_status = 'pending'
+                     WHERE id = ?1",
+                    [book_id],
+                )
+                .map_err(|_| LibraryError::CatalogFailed)?;
+        }
+        transaction
             .execute(
                 "UPDATE books SET thumbnail_status = 'pending'
-                 WHERE status = 'available'
-                   AND (thumbnail_cache_path IS NULL OR thumbnail_status <> 'ready')",
+                 WHERE status IN ('available', 'unavailable')
+                   AND thumbnail_cache_path IS NULL",
                 [],
             )
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        transaction
+            .commit()
             .map_err(|_| LibraryError::CatalogFailed)?;
         Ok(())
     }
@@ -1362,6 +1414,30 @@ impl BookDetailRepository for SqliteDatabase {
                 image_pages,
             },
         }))
+    }
+
+    fn books_without_cover(&self) -> Result<Vec<BookId>, BookDetailError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id
+                 FROM books
+                 WHERE status IN ('available', 'unavailable')
+                   AND thumbnail_cache_path IS NULL
+                 ORDER BY relative_path COLLATE NOCASE, title COLLATE NOCASE",
+            )
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        rows.map(|row| {
+            row.map_err(|_| BookDetailError::RepositoryFailed)
+                .and_then(|id| BookId::parse(&id).map_err(|_| BookDetailError::RepositoryFailed))
+        })
+        .collect()
     }
 }
 
@@ -2257,7 +2333,7 @@ mod tests {
             pending_cover[0].thumbnail_cache_path.as_deref(),
             Some(thumbnail_relative_path)
         );
-        assert_eq!(pending_cover[0].thumbnail_status, "pending");
+        assert_eq!(pending_cover[0].thumbnail_status, "error");
         database
             .save_thumbnail_failure(book_id, "thumbnail_failed")
             .unwrap();
@@ -2348,7 +2424,7 @@ mod tests {
                 configuration.id,
                 &job,
                 &ScanResult {
-                    books: vec![book],
+                    books: vec![book.clone()],
                     issues: Vec::new(),
                     cancelled: false,
                 },
@@ -2360,6 +2436,89 @@ mod tests {
         let books = database.list_books().unwrap();
         assert_eq!(books[0].status, "unavailable");
         assert_eq!(books[0].thumbnail_status, "error");
+
+        let repair_targets = database.books_without_cover().unwrap();
+        assert_eq!(repair_targets.len(), 1);
+        let book_id = repair_targets[0];
+        let existing_cover = database.cache_root.join("thumbnails/existing.png");
+        fs::create_dir_all(existing_cover.parent().unwrap()).unwrap();
+        image::DynamicImage::new_rgb8(2, 3)
+            .save(&existing_cover)
+            .unwrap();
+        database
+            .save_thumbnail(
+                book_id,
+                &ThumbnailOutcome {
+                    cache_relative_path: "thumbnails/existing.png".to_owned(),
+                    width: 2,
+                    height: 3,
+                    format: "png",
+                    source_fingerprint: book.fingerprint.as_str().to_owned(),
+                    page_count: None,
+                },
+            )
+            .unwrap();
+        database
+            .save_thumbnail_failure(book_id, "thumbnail_failed")
+            .unwrap();
+
+        assert!(
+            database.books_without_cover().unwrap().is_empty(),
+            "Repair must preserve an existing last-known-good cover"
+        );
+    }
+
+    #[test]
+    fn catalog_books_are_ordered_by_relative_path_before_title() {
+        let app_data = TempDir::new().unwrap();
+        let library = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let configuration = database
+            .save_configuration(library.path(), "Library")
+            .unwrap();
+        let discovered = [
+            ("Z shelf/Alpha.pdf", "Alpha"),
+            ("A shelf/Zebra.pdf", "Zebra"),
+        ]
+        .into_iter()
+        .map(|(relative_path, title)| {
+            let relative_path = RelativePath::new(relative_path).unwrap();
+            DiscoveredBook {
+                kind: BookKind::PdfFile,
+                status: BookStatus::Available,
+                path_key: if cfg!(target_os = "windows") {
+                    relative_path.as_str().to_lowercase()
+                } else {
+                    relative_path.as_str().to_owned()
+                },
+                title: title.to_owned(),
+                fingerprint: ContentFingerprint::new(format!("pdf:{relative_path}:1")).unwrap(),
+                relative_path,
+                size_bytes: Some(1),
+                modified_at_ms: Some(1),
+                page_count: None,
+                image_pages: Vec::new(),
+            }
+        })
+        .collect::<Vec<_>>();
+        let job = database
+            .start_scan(configuration.id, ScanReason::Initial)
+            .unwrap();
+        database
+            .reconcile(
+                configuration.id,
+                &job,
+                &ScanResult {
+                    books: discovered,
+                    issues: Vec::new(),
+                    cancelled: false,
+                },
+            )
+            .unwrap();
+
+        let books = database.list_books().unwrap();
+        assert_eq!(books[0].relative_path, "A shelf/Zebra.pdf");
+        assert_eq!(books[1].relative_path, "Z shelf/Alpha.pdf");
     }
 
     #[test]
