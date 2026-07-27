@@ -22,6 +22,10 @@
    during repair or explicit retry.
 10. Repair retries only missing/error covers with a 30-second cloud hydration
     window and reports cover successes and failures explicitly.
+11. Repair restores decodable app-data covers whose catalog link was lost
+    before retrying source rendering, and reports restored covers separately.
+12. Repair gives locally present cloud-backed PDFs two seconds for identity
+    probing before classifying them as unavailable; normal rescans remain fast.
 
 ## Windows acceptance
 
@@ -35,6 +39,10 @@
 - global results navigate to their catalog or note source.
 - unavailable cloud books can be retried explicitly without clearing a previous
   cover, and failed bulk repairs preserve all last-known-good cover references.
+- orphaned but valid app-data covers are relinked without reading or changing
+  source books.
+- a locally present PDF that needs more than 250 milliseconds for its first
+  read can still enter Repair's cover-generation queue.
 
 ## Verification evidence
 

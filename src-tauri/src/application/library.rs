@@ -124,6 +124,7 @@ pub(crate) struct ScanSummary {
     pub(crate) updated: u64,
     pub(crate) missing: u64,
     pub(crate) issues: u64,
+    pub(crate) thumbnails_recovered: u64,
     pub(crate) thumbnails_generated: u64,
     pub(crate) thumbnail_failures: u64,
     pub(crate) cancelled: bool,
@@ -169,6 +170,7 @@ pub(crate) trait LibraryRepository {
         error_code: &'static str,
     ) -> Result<(), LibraryError>;
     fn finish_scan(&self, summary: &ScanSummary) -> Result<(), LibraryError>;
+    fn recover_thumbnails(&self) -> Result<u64, LibraryError>;
     fn invalidate_thumbnails(&self) -> Result<(), LibraryError>;
     fn list_books(&self) -> Result<Vec<BookListItem>, LibraryError>;
     fn thumbnail_bytes(&self, cache_relative_path: &str) -> Result<Vec<u8>, LibraryError>;
@@ -178,6 +180,7 @@ pub(crate) trait LibraryScanner {
     fn scan(
         &self,
         root: &Path,
+        reason: ScanReason,
         cancellation: &CancellationToken,
         progress: &mut dyn FnMut(ScanProgress),
     ) -> Result<ScanResult, LibraryError>;
@@ -268,13 +271,17 @@ where
             .repository
             .configuration()?
             .ok_or(LibraryError::NotConfigured)?;
-        if matches!(reason, ScanReason::Repair) {
+        let thumbnails_recovered = if matches!(reason, ScanReason::Repair) {
+            let recovered = self.repository.recover_thumbnails()?;
             self.repository.invalidate_thumbnails()?;
-        }
+            recovered
+        } else {
+            0
+        };
         let job_id = self.repository.start_scan(configuration.id, reason)?;
         let scan = self
             .scanner
-            .scan(&configuration.root, cancellation, progress)?;
+            .scan(&configuration.root, reason, cancellation, progress)?;
         let reconciliation = self
             .repository
             .reconcile(configuration.id, &job_id, &scan)?;
@@ -337,6 +344,7 @@ where
             updated: reconciliation.updated,
             missing: reconciliation.missing,
             issues: scan.issues.len() as u64,
+            thumbnails_recovered,
             thumbnails_generated: generated,
             thumbnail_failures,
             cancelled: scan.cancelled || cancellation.is_cancelled(),

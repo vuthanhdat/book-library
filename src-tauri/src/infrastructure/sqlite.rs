@@ -956,6 +956,82 @@ impl LibraryRepository for SqliteDatabase {
         Ok(())
     }
 
+    fn recover_thumbnails(&self) -> Result<u64, LibraryError> {
+        if !self.cache_root.is_dir() {
+            return Ok(0);
+        }
+        let canonical_cache_root = self
+            .cache_root
+            .canonicalize()
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        let candidates = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT books.id, thumbnails.cache_relative_path
+                     FROM books
+                     JOIN thumbnails ON thumbnails.book_id = books.id
+                     WHERE books.thumbnail_cache_path IS NULL
+                       AND thumbnails.cache_relative_path <> ''",
+                )
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|_| LibraryError::CatalogFailed)?
+        };
+
+        let recoverable = candidates
+            .into_iter()
+            .filter(|(_, cache_relative_path)| {
+                let Ok(relative) = RelativePath::new(cache_relative_path) else {
+                    return false;
+                };
+                let Ok(resolved) = self.cache_root.join(relative.as_str()).canonicalize() else {
+                    return false;
+                };
+                resolved.starts_with(&canonical_cache_root) && image::open(resolved).is_ok()
+            })
+            .collect::<Vec<_>>();
+
+        let transaction = connection
+            .transaction()
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        let mut recovered = 0_u64;
+        for (book_id, cache_relative_path) in recoverable {
+            let changed = transaction
+                .execute(
+                    "UPDATE books
+                     SET thumbnail_cache_path = ?1, thumbnail_status = 'ready'
+                     WHERE id = ?2 AND thumbnail_cache_path IS NULL",
+                    params![cache_relative_path, book_id],
+                )
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            if changed == 0 {
+                continue;
+            }
+            transaction
+                .execute(
+                    "UPDATE thumbnails
+                     SET status = 'ready', error_code = NULL
+                     WHERE book_id = ?1",
+                    [book_id],
+                )
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            recovered += 1;
+        }
+        transaction
+            .commit()
+            .map_err(|_| LibraryError::CatalogFailed)?;
+        Ok(recovered)
+    }
+
     fn thumbnail_bytes(&self, cache_relative_path: &str) -> Result<Vec<u8>, LibraryError> {
         let relative =
             RelativePath::new(cache_relative_path).map_err(|_| LibraryError::ThumbnailFailed)?;
@@ -2128,21 +2204,42 @@ mod tests {
         assert_eq!(stored_source.relative_path.as_str(), "Shelf/Book.pdf");
         assert_eq!(stored_source.status, "available");
 
+        let thumbnail_relative_path = "thumbnails/known-good.png";
+        let thumbnail_path = database.cache_root.join(thumbnail_relative_path);
+        fs::create_dir_all(thumbnail_path.parent().unwrap()).unwrap();
+        fs::write(&thumbnail_path, b"not an image").unwrap();
         {
             let connection = database.connection.lock().unwrap();
             connection
                 .execute(
-                    "UPDATE books SET thumbnail_cache_path = 'thumbnails/known-good.png',
-                     thumbnail_status = 'ready' WHERE id = ?1",
-                    [book_id.to_string()],
+                    "INSERT INTO thumbnails
+                     (book_id, cache_relative_path, width, height, format,
+                      source_fingerprint, status, error_code)
+                     VALUES (?1, ?2, 2, 3, 'png', 'pdf:10:20', 'error',
+                             'thumbnail_failed')",
+                    params![book_id.to_string(), thumbnail_relative_path],
                 )
                 .unwrap();
         }
+        assert_eq!(database.recover_thumbnails().unwrap(), 0);
+        image::DynamicImage::new_rgb8(2, 3)
+            .save(&thumbnail_path)
+            .unwrap();
+        assert_eq!(database.recover_thumbnails().unwrap(), 1);
+        assert_eq!(database.recover_thumbnails().unwrap(), 0);
+
+        let recovered_cover = database.list_books().unwrap();
+        assert_eq!(
+            recovered_cover[0].thumbnail_cache_path.as_deref(),
+            Some(thumbnail_relative_path)
+        );
+        assert_eq!(recovered_cover[0].thumbnail_status, "ready");
+
         database.invalidate_thumbnails().unwrap();
         let ready_cover = database.list_books().unwrap();
         assert_eq!(
             ready_cover[0].thumbnail_cache_path.as_deref(),
-            Some("thumbnails/known-good.png")
+            Some(thumbnail_relative_path)
         );
         assert_eq!(ready_cover[0].thumbnail_status, "ready");
         {
@@ -2158,7 +2255,7 @@ mod tests {
         let pending_cover = database.list_books().unwrap();
         assert_eq!(
             pending_cover[0].thumbnail_cache_path.as_deref(),
-            Some("thumbnails/known-good.png")
+            Some(thumbnail_relative_path)
         );
         assert_eq!(pending_cover[0].thumbnail_status, "pending");
         database
@@ -2167,7 +2264,7 @@ mod tests {
         let failed_cover = database.list_books().unwrap();
         assert_eq!(
             failed_cover[0].thumbnail_cache_path.as_deref(),
-            Some("thumbnails/known-good.png")
+            Some(thumbnail_relative_path)
         );
         assert_eq!(failed_cover[0].thumbnail_status, "error");
 

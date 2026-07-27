@@ -42,6 +42,7 @@ interface ScanSummary {
   updated: number;
   missing: number;
   issues: number;
+  thumbnailsRecovered: number;
   thumbnailsGenerated: number;
   thumbnailFailures: number;
   cancelled: boolean;
@@ -1989,8 +1990,8 @@ function SummaryPanel({ summary }: { summary: ScanSummary }) {
       {summary.cancelled ? "Scan cancelled." : "Scan complete."}{" "}
       {summary.discovered} discovered, {summary.added} added, {summary.updated}{" "}
       updated, {summary.missing} missing. Covers:{" "}
-      {summary.thumbnailsGenerated} generated, {summary.thumbnailFailures}{" "}
-      failed. {summary.issues} scan issues.
+      {summary.thumbnailsRecovered} recovered, {summary.thumbnailsGenerated}{" "}
+      generated, {summary.thumbnailFailures} failed. {summary.issues} scan issues.
     </div>
   );
 }

@@ -12,7 +12,8 @@ use std::{
 
 use crate::{
     application::{
-        DiscoveredBook, LibraryError, LibraryScanner, ScanIssue, ScanProgress, ScanResult,
+        DiscoveredBook, LibraryError, LibraryScanner, ScanIssue, ScanProgress, ScanReason,
+        ScanResult,
     },
     domain::{BookKind, BookStatus, ContentFingerprint, RelativePath},
 };
@@ -21,6 +22,15 @@ const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 const DIRECTORY_BATCH_SIZE: usize = 8;
 const DIRECTORY_READ_TIMEOUT: Duration = Duration::from_millis(500);
 const PDF_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
+const REPAIR_PDF_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn pdf_probe_timeout(reason: ScanReason) -> Duration {
+    if matches!(reason, ScanReason::Repair) {
+        REPAIR_PDF_PROBE_TIMEOUT
+    } else {
+        PDF_PROBE_TIMEOUT
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct CandidateMetadata {
@@ -227,7 +237,7 @@ impl FilesystemScanner {
         }
     }
 
-    fn probe_pdf(path: &Path) -> Result<(bool, u64, Option<i64>), &'static str> {
+    fn probe_pdf(path: &Path, timeout: Duration) -> Result<(bool, u64, Option<i64>), &'static str> {
         let owned_path = path.to_path_buf();
         let (sender, receiver) = mpsc::sync_channel(1);
         thread::spawn(move || {
@@ -242,7 +252,7 @@ impl FilesystemScanner {
             })();
             let _ = sender.send(result);
         });
-        match receiver.recv_timeout(PDF_PROBE_TIMEOUT) {
+        match receiver.recv_timeout(timeout) {
             Ok(Some(probe)) => Ok(probe),
             Ok(None) => Err("unreadable_file"),
             Err(_) => Err("file_unavailable"),
@@ -255,7 +265,11 @@ impl FilesystemScanner {
         candidate.starts_with(root)
     }
 
-    fn pdf_candidate(root: &Path, path: &Path) -> Result<Option<DiscoveredBook>, ScanIssue> {
+    fn pdf_candidate(
+        root: &Path,
+        path: &Path,
+        probe_timeout: Duration,
+    ) -> Result<Option<DiscoveredBook>, ScanIssue> {
         if !Self::contained(root, path) {
             return Err(ScanIssue {
                 relative_path: None,
@@ -274,7 +288,7 @@ impl FilesystemScanner {
                 message: "A PDF candidate is currently available online only.",
             });
         }
-        let (valid_signature, size, modified_at_ms) = match Self::probe_pdf(path) {
+        let (valid_signature, size, modified_at_ms) = match Self::probe_pdf(path, probe_timeout) {
             Ok(value) => value,
             Err(code) => {
                 return Err(ScanIssue {
@@ -441,10 +455,12 @@ impl LibraryScanner for FilesystemScanner {
     fn scan(
         &self,
         root: &Path,
+        reason: ScanReason,
         cancellation: &crate::application::CancellationToken,
         progress: &mut dyn FnMut(ScanProgress),
     ) -> Result<ScanResult, LibraryError> {
         let root = root.canonicalize().map_err(|_| LibraryError::RootInvalid)?;
+        let pdf_probe_timeout = pdf_probe_timeout(reason);
         let mut books = Vec::new();
         let mut issues = Vec::new();
         let mut visited_entries = 0_u64;
@@ -530,7 +546,7 @@ impl LibraryScanner for FilesystemScanner {
                     if entry.is_directory {
                         directories.push_back(entry.path.clone());
                     } else if entry.is_file && Self::is_pdf(&entry.path) {
-                        match Self::pdf_candidate(&root, &entry.path) {
+                        match Self::pdf_candidate(&root, &entry.path, pdf_probe_timeout) {
                             Ok(Some(book)) => books.push(book),
                             Ok(None) => {}
                             Err(issue) => {
@@ -592,7 +608,12 @@ mod tests {
 
         let mut progress = |_| {};
         let result = FilesystemScanner::new()
-            .scan(root.path(), &CancellationToken::default(), &mut progress)
+            .scan(
+                root.path(),
+                ScanReason::Manual,
+                &CancellationToken::default(),
+                &mut progress,
+            )
             .unwrap();
 
         assert_eq!(result.books.len(), 2);
@@ -621,12 +642,22 @@ mod tests {
 
         let mut progress = |_| {};
         let cancelled = FilesystemScanner::new()
-            .scan(root.path(), &cancellation, &mut progress)
+            .scan(
+                root.path(),
+                ScanReason::Manual,
+                &cancellation,
+                &mut progress,
+            )
             .unwrap();
         assert!(cancelled.cancelled);
 
         let valid = FilesystemScanner::new()
-            .scan(root.path(), &CancellationToken::default(), &mut progress)
+            .scan(
+                root.path(),
+                ScanReason::Manual,
+                &CancellationToken::default(),
+                &mut progress,
+            )
             .unwrap();
         assert!(valid.books.is_empty());
         assert_eq!(valid.issues[0].code, "invalid_pdf_signature");
@@ -656,7 +687,12 @@ mod tests {
 
         let mut progress = |_| {};
         let result = FilesystemScanner::new()
-            .scan(root.path(), &CancellationToken::default(), &mut progress)
+            .scan(
+                root.path(),
+                ScanReason::Manual,
+                &CancellationToken::default(),
+                &mut progress,
+            )
             .unwrap();
 
         assert_eq!(result.books.len(), 1);
@@ -664,6 +700,18 @@ mod tests {
         assert_eq!(
             result.books[0].relative_path.as_str(),
             format!("{expected_title}/pages")
+        );
+    }
+
+    #[test]
+    fn repair_allows_a_longer_pdf_probe_without_slowing_manual_scans() {
+        assert_eq!(
+            pdf_probe_timeout(ScanReason::Repair),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            pdf_probe_timeout(ScanReason::Manual),
+            Duration::from_millis(250)
         );
     }
 }
