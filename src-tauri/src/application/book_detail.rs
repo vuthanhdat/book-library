@@ -227,6 +227,15 @@ where
             if cancellation.is_cancelled() {
                 break;
             }
+            let target = self
+                .repository
+                .book_thumbnail_target(book_id)
+                .map_err(|_| LibraryError::CatalogFailed)?;
+            progress(ScanProgress {
+                visited_entries: generated + failures,
+                discovered_books: total,
+                current_relative_path: target.map(|value| value.book.title),
+            });
             let result = ForceBookCover::new(self.repository, self.generator)
                 .execute_with_progress(book_id, &mut |_| {});
             if result.is_ok() {

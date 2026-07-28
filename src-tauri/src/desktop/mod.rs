@@ -767,7 +767,7 @@ async fn execute_cover_repair(
                 ScanProgressResponse {
                     visited_entries: value.visited_entries,
                     discovered_books: value.discovered_books,
-                    current_relative_path: None,
+                    current_relative_path: value.current_relative_path,
                 },
             ) {
                 tracing::warn!(event = "cover_repair_progress_emit_failed", error = %error);

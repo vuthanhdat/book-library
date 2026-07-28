@@ -5,7 +5,9 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -217,6 +219,8 @@ export function App() {
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [selectedBookDetail, setSelectedBookDetail] =
     useState<BookDetail | null>(null);
+  const catalogScrollY = useRef(0);
+  const restoreCatalogScroll = useRef(false);
   const [bookDetailBusy, setBookDetailBusy] = useState(false);
   const [bookDetailError, setBookDetailError] =
     useState<DesktopError | null>(null);
@@ -263,7 +267,7 @@ export function App() {
       if (event.payload.bookId !== selectedBookDetail?.id) return;
       setCoverProgress((current) => [
         ...current,
-        coverProgressMessage(event.payload.stage),
+        `${selectedBookDetail.title}: ${coverProgressMessage(event.payload.stage)}`,
       ]);
     }).then((stop) => {
       unlisten = stop;
@@ -459,6 +463,7 @@ export function App() {
   };
 
   const openBookDetail = async (bookId: string) => {
+    catalogScrollY.current = window.scrollY;
     setBookDetailBusy(true);
     setBookDetailError(null);
     setCoverProgress([]);
@@ -472,6 +477,20 @@ export function App() {
       setBookDetailBusy(false);
     }
   };
+
+  const closeBookDetail = () => {
+    restoreCatalogScroll.current = true;
+    setSelectedBookDetail(null);
+  };
+
+  useLayoutEffect(() => {
+    if (selectedBookDetail || !restoreCatalogScroll.current) return;
+    restoreCatalogScroll.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: catalogScrollY.current, behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedBookDetail]);
 
   const updateBookDetail = async (
     readingStatus: BookDetail["readingStatus"],
@@ -499,12 +518,27 @@ export function App() {
     if (!selectedBookDetail) return;
     setBookDetailBusy(true);
     setBookDetailError(null);
-    setCoverProgress(["Cover generation requested."]);
+    setCoverProgress([
+      `Cover generation requested for “${selectedBookDetail.title}”.`,
+    ]);
     try {
       const detail = await invoke<BookDetail>("force_book_cover", {
         bookId: selectedBookDetail.id,
       });
       setSelectedBookDetail(detail);
+      setBooks((current) =>
+        current.map((book) =>
+          book.id === detail.id
+            ? {
+                ...book,
+                pageCount: detail.pageCount,
+                status: detail.status,
+                thumbnailDataUrl: detail.thumbnailDataUrl,
+                thumbnailStatus: detail.thumbnailStatus,
+              }
+            : book,
+        ),
+      );
       await loadBooks();
     } catch (error) {
       const detailError = desktopError(error);
@@ -739,7 +773,7 @@ export function App() {
                   coverProgress={coverProgress}
                   detail={selectedBookDetail}
                   error={bookDetailError}
-                  onBack={() => setSelectedBookDetail(null)}
+                  onBack={closeBookDetail}
                   onEditTitle={() =>
                     startEditingBook(
                       books.find((book) => book.id === selectedBookDetail.id) ??
