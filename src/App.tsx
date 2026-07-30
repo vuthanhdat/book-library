@@ -1602,7 +1602,8 @@ export function StudyWorkspace({
                       {page.bookTitle} · page {page.pageIndex + 1}
                     </p>
                     <p className="mt-1 text-sm text-stone-500">
-                      {Math.round(page.confidence * 100)}% · {page.providerId}
+                      {Math.round(page.confidence * 100)}% · {page.providerId} ·{" "}
+                      {page.providerVersion}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">

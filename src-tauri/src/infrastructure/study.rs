@@ -15,6 +15,8 @@ pub(crate) struct TesseractOcrProvider {
     executable: PathBuf,
 }
 
+const MIN_HORIZONTAL_CONFIDENCE: f32 = 0.65;
+
 impl TesseractOcrProvider {
     pub(crate) fn discover() -> Self {
         let executable = resolve_tesseract_executable(
@@ -81,9 +83,49 @@ impl OcrProvider for TesseractOcrProvider {
         image_path: &Path,
         cancellation: &CancellationToken,
     ) -> Result<OcrRecognition, StudyError> {
+        let horizontal = self.recognize_with_config(
+            image_path,
+            cancellation,
+            "jpn+eng",
+            "3",
+            "system:jpn+eng-psm3",
+        )?;
+        if horizontal.confidence >= MIN_HORIZONTAL_CONFIDENCE {
+            return Ok(horizontal);
+        }
+        match self.recognize_with_config(
+            image_path,
+            cancellation,
+            "jpn_vert",
+            "5",
+            "system:jpn_vert-psm5",
+        ) {
+            Ok(vertical) if vertical.confidence > horizontal.confidence => Ok(vertical),
+            Ok(_) | Err(StudyError::OcrFailed) => Ok(horizontal),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+impl TesseractOcrProvider {
+    fn recognize_with_config(
+        &self,
+        image_path: &Path,
+        cancellation: &CancellationToken,
+        language: &str,
+        page_segmentation_mode: &str,
+        provider_version: &str,
+    ) -> Result<OcrRecognition, StudyError> {
         let mut child = Command::new(&self.executable)
             .arg(image_path)
-            .args(["stdout", "-l", "jpn+eng", "tsv"])
+            .args([
+                "stdout",
+                "-l",
+                language,
+                "--psm",
+                page_segmentation_mode,
+                "tsv",
+            ])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -114,11 +156,11 @@ impl OcrProvider for TesseractOcrProvider {
         let output = output_reader.join().map_err(|_| StudyError::OcrFailed)?;
         let tsv = String::from_utf8(output.map_err(|_| StudyError::OcrFailed)?)
             .map_err(|_| StudyError::OcrFailed)?;
-        parse_tesseract_tsv(&tsv)
+        parse_tesseract_tsv(&tsv, provider_version)
     }
 }
 
-fn parse_tesseract_tsv(tsv: &str) -> Result<OcrRecognition, StudyError> {
+fn parse_tesseract_tsv(tsv: &str, provider_version: &str) -> Result<OcrRecognition, StudyError> {
     let mut blocks = Vec::new();
     for line in tsv.lines().skip(1) {
         let columns = line.splitn(12, '\t').collect::<Vec<_>>();
@@ -155,7 +197,7 @@ fn parse_tesseract_tsv(tsv: &str) -> Result<OcrRecognition, StudyError> {
         text,
         confidence,
         provider_id: "tesseract-cli".to_owned(),
-        provider_version: "system".to_owned(),
+        provider_version: provider_version.to_owned(),
         blocks,
     })
 }
@@ -276,11 +318,30 @@ mod tests {
             "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
              5\t1\t1\t1\t1\t1\t10\t20\t30\t40\t95.0\t日本語\n\
              5\t1\t1\t1\t1\t2\t45\t20\t20\t40\t80.0\t本",
+            "fixture",
         )
         .unwrap();
         assert_eq!(result.text, "日本語本");
         assert_eq!(result.blocks.len(), 2);
         assert!(result.confidence > 0.8);
+        assert_eq!(result.provider_version, "fixture");
+    }
+
+    #[test]
+    #[ignore = "requires BOOK_LIBRARY_OCR_SMOKE_IMAGE and a local Japanese Tesseract runtime"]
+    fn recognizes_a_real_vertical_japanese_page() {
+        let image = std::env::var_os("BOOK_LIBRARY_OCR_SMOKE_IMAGE")
+            .map(PathBuf::from)
+            .expect("set BOOK_LIBRARY_OCR_SMOKE_IMAGE");
+        let provider = TesseractOcrProvider::discover();
+
+        let result = provider
+            .recognize(&image, &CancellationToken::default())
+            .unwrap();
+
+        assert!(result.confidence > 0.8);
+        assert_eq!(result.provider_version, "system:jpn_vert-psm5");
+        assert!(result.text.contains("問い"));
     }
 
     #[test]

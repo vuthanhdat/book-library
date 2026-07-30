@@ -81,6 +81,11 @@ not a replacement for the source page.
 
 The Tesseract adapter removes artificial whitespace adjacent to Japanese
 characters before persistence while preserving spaces between Latin words.
+It first recognizes a page with horizontal `jpn+eng` and automatic page
+segmentation. When mean word confidence is below 65%, it retries with
+`jpn_vert` and vertical single-block segmentation, then keeps the
+higher-confidence result. A missing vertical language model does not discard a
+usable horizontal result.
 Previously stored OCR pages expose an explicit `Trim spaces` action that updates
 the derived OCR text and queues a search-index refresh.
 

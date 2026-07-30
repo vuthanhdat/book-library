@@ -34,7 +34,9 @@ library or Markdown workflows depend on any optional runtime.
 6. One PDF or image page is resolved by book ID, canonicalized beneath the
    library root, and materialized to app-data PNG without reader state.
 7. A Tesseract CLI adapter parses Japanese/English TSV text, confidence, and
-   word bounds; the job supports explicit cancellation.
+   word bounds; the job supports explicit cancellation and retries
+   low-confidence pages with the Japanese vertical model before selecting the
+   better result.
 8. OCR pages and blocks are rebuildable SQLite projections and join explicit
    FTS5 rebuilds under the `ocr` scope.
 9. Dictionary and OCR context create explicit learning drafts. Only approved
