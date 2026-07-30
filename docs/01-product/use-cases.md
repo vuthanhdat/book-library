@@ -16,6 +16,7 @@ Feature IDs, status, and milestone assignment are authoritative in the [feature 
 | Rescan catalog | `LIB-011` | Refresh changed content and rebuild derived catalog state safely. | [`03-library/`](../03-library/) |
 | Repair missing covers | `LIB-011` | Retry catalog books without a usable cover, one at a time, without rescanning source folders. | [`03-library/thumbnail.md`](../03-library/thumbnail.md) |
 | Open book source location | `READ-001`, `READ-009` | Open a PDF's containing directory or an image book's directory in the OS file manager. | [ADR-009](../adr/ADR-009-external-reading-and-live-catalog-search.md) |
+| Read and study a book | `READ-002`–`READ-004`, `READ-006`, `OCR-001`, `OCR-002`, `DICT-001`–`DICT-003` | Render one authorized page, navigate without modifying the source, and look up selected saved OCR text beside the book. | [ADR-016](../adr/ADR-016-integrated-study-reader.md) |
 | Filter catalog live | `LIB-014` | Narrow visible books immediately by title, relative path, kind, or status. | [ADR-009](../adr/ADR-009-external-reading-and-live-catalog-search.md) |
 | Edit book display title | `LIB-015` | Correct one catalog title immediately without rescanning or modifying its source path. | [`03-library/discovery.md`](../03-library/discovery.md) |
 | Recover a missing source | `LIB-016`, `LIB-017` | Open the nearest safe parent or explicitly relink a matching source inside the configured library without modifying files. | [`ADR-011`](../adr/ADR-011-missing-source-recovery-and-m4-search.md) |

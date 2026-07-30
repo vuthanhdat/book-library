@@ -21,13 +21,14 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-006](ADR-006-rust-modular-monolith.md) | Accepted | Keep domain and application behavior in Rust using a modular-monolith structure for the first implementation. |
 | [ADR-007](ADR-007-supported-desktop-platforms.md) | Accepted | Require one shared codebase supporting Windows 11 x64 and macOS Intel x64 from M0. |
 | [ADR-008](ADR-008-m1-library-policies.md) | Accepted | Define M1 path identity, case, symlink, image-folder, and thumbnail policies. |
-| [ADR-009](ADR-009-external-reading-and-live-catalog-search.md) | Accepted | Open source locations in the OS file manager and search the catalog live instead of embedding a reader. |
+| [ADR-009](ADR-009-external-reading-and-live-catalog-search.md) | Superseded | Open source locations in the OS file manager and search the catalog live instead of embedding a reader. |
 | [ADR-010](ADR-010-m3-markdown-notes-policy.md) | Accepted | Keep M3 notes portable with a configurable root, conservative editor, relative book links, rebuildable projections, and explicit refresh. |
 | [ADR-011](ADR-011-missing-source-recovery-and-m4-search.md) | Accepted | Recover missing sources only through authorized explicit relinking and use rebuildable trigram FTS5 for M4. |
 | [ADR-012](ADR-012-book-detail-and-explicit-cover-retry.md) | Accepted | Add app-local book workflow metadata and retry one cloud-backed cover explicitly without slowing normal scans. |
 | [ADR-013](ADR-013-bulk-cover-repair-targets.md) | Accepted | Treat Repair as a batch Force retry for books that have no usable cover. |
 | [ADR-014](ADR-014-m6-offline-japanese-study-baseline.md) | Accepted | Start M6 with disabled offline study modules, importable dictionary data, explicit page OCR, review drafts, and isolated provider/runtime failures. |
 | [ADR-015](ADR-015-user-provided-yomitan-dictionary-import.md) | Accepted | Import bounded user-provided Yomitan ZIP dictionaries without bundling or extracting their data. |
+| [ADR-016](ADR-016-integrated-study-reader.md) | Accepted | Retain external opening and add a bounded integrated reader for page OCR and adjacent offline dictionary lookup. |
 
 ## ADR format
 

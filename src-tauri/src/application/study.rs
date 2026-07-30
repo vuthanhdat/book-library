@@ -97,10 +97,31 @@ pub(crate) struct BookPageSource {
     pub(crate) book_id: BookId,
     pub(crate) title: String,
     pub(crate) page_index: u32,
+    pub(crate) page_count: u32,
     pub(crate) source_fingerprint: String,
     pub(crate) library_root: PathBuf,
     pub(crate) source_path: PathBuf,
     pub(crate) kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RenderedStudyPage {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) media_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct StudyReaderPage {
+    pub(crate) book_id: String,
+    pub(crate) book_title: String,
+    pub(crate) page_index: u32,
+    pub(crate) page_count: u32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) media_type: String,
+    pub(crate) bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -200,6 +221,7 @@ pub(crate) trait StudyRepository {
 
 pub(crate) trait PageMaterializer {
     fn materialize(&self, source: &BookPageSource) -> Result<PathBuf, StudyError>;
+    fn render(&self, source: &BookPageSource) -> Result<RenderedStudyPage, StudyError>;
 }
 
 pub(crate) trait OcrProvider {
@@ -372,6 +394,25 @@ where
             return Err(StudyError::Cancelled);
         }
         self.repository.save_ocr_page(&source, &recognition)
+    }
+
+    pub(crate) fn reader_page(
+        &self,
+        book_id: BookId,
+        page_index: u32,
+    ) -> Result<StudyReaderPage, StudyError> {
+        let source = self.repository.book_page_source(book_id, page_index)?;
+        let rendered = self.pages.render(&source)?;
+        Ok(StudyReaderPage {
+            book_id: source.book_id.to_string(),
+            book_title: source.title,
+            page_index: source.page_index,
+            page_count: source.page_count,
+            width: rendered.width,
+            height: rendered.height,
+            media_type: rendered.media_type,
+            bytes: rendered.bytes,
+        })
     }
 
     pub(crate) fn list_ocr_pages(

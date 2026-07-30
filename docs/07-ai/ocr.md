@@ -43,10 +43,10 @@ must still cover horizontal prose, vertical manga, furigana, low-contrast scans,
 and mixed Japanese/Latin fixtures on Windows 11 x64 and macOS Intel x64 before
 OCR features become `Completed`.
 
-Page materialization is a narrow application use case that renders or loads one
-selected page into a bounded app-data input. It is not authorization to
-implement the deferred embedded reader, navigation, progress, bookmarks, or
-source annotations.
+Page materialization is shared with the bounded Study Reader accepted by
+ADR-016. It renders or loads only the explicitly requested page into app data.
+It does not authorize automatic OCR, reading progress, bookmarks, source
+annotations, or whole-book background work.
 
 # Mermaid Diagram
 

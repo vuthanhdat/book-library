@@ -71,7 +71,7 @@ The implementation plan is the only roadmap document. The backlog decomposes mil
 | Detailed module designs | Draft | Remaining questions become ADRs only when they block scheduled work. |
 | Cross-platform core | Completed through M4 | Windows 11 x64 and macOS Intel x64 validation covers the engineering foundation, library, external reading, Markdown knowledge, recovery, and offline search workflows. |
 | Latest completed sprint | Sprint 05 | Missing-source recovery, Book Detail, cover repair, and offline Search MVP. |
-| Active delivery | Sprint 06 / M6 | Offline Japanese dictionary, explicit page OCR, learning drafts, Anki TSV, optional assistant drafts, and trusted module manifests. |
+| Active delivery | Sprint 06 / M6 | Offline Japanese dictionary, bounded Study Reader, explicit page OCR, learning drafts, Anki TSV, optional assistant drafts, and trusted module manifests. |
 | Deferred release gate | M5 | Reliability and release work remains planned; the maintainer authorized M6 implementation before M5 without marking absent M5 source complete. |
 
 ## Documentation responsibilities

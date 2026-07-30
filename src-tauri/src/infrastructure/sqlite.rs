@@ -2138,6 +2138,7 @@ impl StudyRepository for SqliteDatabase {
         let row = connection
             .query_row(
                 "SELECT books.title, books.relative_path, books.kind, books.fingerprint,
+                        books.page_count,
                         configured_libraries.root_path
                  FROM books
                  JOIN configured_libraries ON configured_libraries.id = books.library_id
@@ -2149,14 +2150,15 @@ impl StudyRepository for SqliteDatabase {
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<i64>>(4)?,
+                        row.get::<_, String>(5)?,
                     ))
                 },
             )
             .optional()
             .map_err(|_| StudyError::RepositoryFailed)?
             .ok_or(StudyError::SourceUnavailable)?;
-        let (title, relative_path, kind, source_fingerprint, root) = row;
+        let (title, relative_path, kind, source_fingerprint, page_count, root) = row;
         let library_root = PathBuf::from(root);
         let page_relative_path = if kind == "image_folder" {
             connection
@@ -2181,6 +2183,10 @@ impl StudyRepository for SqliteDatabase {
             book_id,
             title,
             page_index,
+            page_count: page_count
+                .and_then(|value| u32::try_from(value).ok())
+                .map(|value| value.max(page_index.saturating_add(1)))
+                .unwrap_or(page_index.saturating_add(1)),
             source_fingerprint,
             library_root,
             source_path,

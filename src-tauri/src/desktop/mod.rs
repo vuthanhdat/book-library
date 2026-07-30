@@ -19,8 +19,8 @@ use crate::{
         OcrPageRecord, OpenBookLocation, ReconcileCatalog, RelinkMissingBook, RepairBookCovers,
         ScanProgress, ScanReason, SearchDiagnostics, SearchError, SearchLibrary,
         SearchRebuildSummary, SearchRepository, SearchResultItem, SourceLocationError, StudyError,
-        StudyModule, StudyWorkspace, ThumbnailProgressStage, TrustedModule, UpdateBookDetail,
-        UpdateBookDisplayTitle,
+        StudyModule, StudyReaderPage, StudyWorkspace, ThumbnailProgressStage, TrustedModule,
+        UpdateBookDetail, UpdateBookDisplayTitle,
     },
     domain::{BookId, NoteId},
     infrastructure::{
@@ -308,6 +308,18 @@ struct OcrPageResponse {
     provider_id: String,
     provider_version: String,
     blocks: Vec<OcrBlockResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StudyReaderPageResponse {
+    book_id: String,
+    book_title: String,
+    page_index: u32,
+    page_count: u32,
+    width: u32,
+    height: u32,
+    image_data_url: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -795,6 +807,22 @@ fn ocr_page_response(page: OcrPageRecord) -> OcrPageResponse {
         provider_id: page.provider_id,
         provider_version: page.provider_version,
         blocks: page.blocks.into_iter().map(ocr_block_response).collect(),
+    }
+}
+
+fn study_reader_page_response(page: StudyReaderPage) -> StudyReaderPageResponse {
+    StudyReaderPageResponse {
+        book_id: page.book_id,
+        book_title: page.book_title,
+        page_index: page.page_index,
+        page_count: page.page_count,
+        width: page.width,
+        height: page.height,
+        image_data_url: format!(
+            "data:{};base64,{}",
+            page.media_type,
+            STANDARD.encode(page.bytes)
+        ),
     }
 }
 
@@ -1613,6 +1641,35 @@ fn list_ocr_pages(
 }
 
 #[tauri::command]
+async fn get_study_reader_page(
+    book_id: String,
+    page_index: u32,
+    backend: State<'_, BackendState>,
+) -> Result<StudyReaderPageResponse, DesktopError> {
+    let book_id =
+        BookId::parse(&book_id).map_err(|_| DesktopError::from(StudyError::InvalidInput))?;
+    let database = Arc::clone(&backend.database);
+    let pages = Arc::clone(&backend.thumbnails);
+    let ocr = Arc::clone(&backend.ocr);
+    let exporter = Arc::clone(&backend.learning_exporter);
+    let assistant = Arc::clone(&backend.study_assistant);
+    tauri::async_runtime::spawn_blocking(move || {
+        let workspace = StudyWorkspace::new(
+            database.as_ref(),
+            pages.as_ref(),
+            ocr.as_ref(),
+            exporter.as_ref(),
+            assistant.as_ref(),
+        );
+        workspace.reader_page(book_id, page_index)
+    })
+    .await
+    .map_err(|_| DesktopError::from(StudyError::RepositoryFailed))?
+    .map(study_reader_page_response)
+    .map_err(DesktopError::from)
+}
+
+#[tauri::command]
 fn trim_ocr_page(
     page_id: String,
     backend: State<'_, BackendState>,
@@ -1798,6 +1855,7 @@ pub(crate) fn run() {
             run_page_ocr,
             cancel_page_ocr,
             list_ocr_pages,
+            get_study_reader_page,
             trim_ocr_page,
             create_learning_draft,
             list_learning_drafts,

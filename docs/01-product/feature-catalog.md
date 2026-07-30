@@ -75,11 +75,11 @@ Design documents alone never justify `In Progress` or `Completed`.
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
 | READ-001 | Open a book's source location in the OS file manager | Completed | M2 |
-| READ-002 | Open and render PDF books through PDFium adapter | Deferred | Post-MVP |
-| READ-003 | Open image-folder books in an embedded reader | Deferred | Post-MVP |
-| READ-004 | Next/previous page and direct page navigation | Deferred | Post-MVP |
+| READ-002 | Open and render PDF books through PDFium adapter | In Progress | M6 |
+| READ-003 | Open image-folder books in an embedded reader | In Progress | M6 |
+| READ-004 | Next/previous page and direct page navigation | In Progress | M6 |
 | READ-005 | Single-page and continuous image reading modes | Deferred | Post-MVP |
-| READ-006 | Zoom, fit width, fit height, and rotation | Deferred | Post-MVP |
+| READ-006 | Zoom, fit width, fit height, and rotation | In Progress | M6 |
 | READ-007 | Lazy loading and bounded page cache | Deferred | Post-MVP |
 | READ-008 | Fullscreen and keyboard shortcuts | Deferred | Post-MVP |
 | READ-009 | User-readable source-location availability errors | Completed | M2 |

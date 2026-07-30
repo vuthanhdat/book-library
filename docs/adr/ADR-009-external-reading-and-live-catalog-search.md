@@ -1,6 +1,6 @@
 # ADR-009: Open source locations externally and search the catalog live
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-016](ADR-016-integrated-study-reader.md)
 - **Date:** 2026-07-26
 
 ## Context
@@ -16,6 +16,10 @@ This is useful before the broader M4 knowledge-search and FTS5 work exists.
 ## Decision
 
 Book Library is a catalog and launcher, not an embedded reader.
+
+This blanket reader restriction was superseded by ADR-016. External opening and
+live catalog search remain valid; a bounded integrated Study Reader is now also
+accepted for Japanese-learning workflows.
 
 Opening a catalog book launches its source location in the operating system file
 manager:

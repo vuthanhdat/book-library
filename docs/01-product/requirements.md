@@ -4,7 +4,7 @@ Capture product requirements for the first architecture-complete version of Book
 
 # Background
 
-The user stores books in a normal folder hierarchy and uses the application on both Windows 11 x64 and macOS Intel x64. Categories are represented by folders, not application-managed collections. PDF files are books. Folders containing ordered images are also books, especially for manga and scanned documents. Book Library should index these items and open their source locations for external reader applications while leaving files where they are.
+The user stores books in a normal folder hierarchy and uses the application on both Windows 11 x64 and macOS Intel x64. Categories are represented by folders, not application-managed collections. PDF files are books. Folders containing ordered images are also books, especially for manga and scanned documents. Book Library should index these items, open their source locations for external reader applications, and provide a bounded integrated study reader while leaving files where they are.
 
 # Requirements
 
@@ -17,6 +17,9 @@ Functional requirements:
 - Preserve relative paths as stable book identifiers.
 - Generate and cache thumbnails without modifying source folders unless configured.
 - Open a selected book's source location in the operating system file manager.
+- Open one cataloged PDF or image-folder page in an integrated Study Reader.
+- Navigate pages and look up selected saved OCR text in an adjacent offline
+  Japanese-to-Vietnamese dictionary.
 - Filter the local catalog in real time by title, path, kind, and status.
 - Edit an app-local display title without renaming or rewriting the source book.
 - Store metadata and rebuildable search indexes in SQLite when required.

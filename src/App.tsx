@@ -221,6 +221,16 @@ interface OcrPage {
   blocks: OcrBlock[];
 }
 
+export interface StudyReaderPage {
+  bookId: string;
+  bookTitle: string;
+  pageIndex: number;
+  pageCount: number;
+  width: number;
+  height: number;
+  imageDataUrl: string;
+}
+
 interface LearningDraft {
   id: string;
   sourceKind: string;
@@ -348,6 +358,9 @@ export function App() {
   const [ocrBookId, setOcrBookId] = useState("");
   const [ocrPageNumber, setOcrPageNumber] = useState(1);
   const [ocrPages, setOcrPages] = useState<OcrPage[]>([]);
+  const [readerPage, setReaderPage] = useState<StudyReaderPage | null>(null);
+  const [readerBusy, setReaderBusy] = useState(false);
+  const [readerError, setReaderError] = useState<DesktopError | null>(null);
   const [learningDrafts, setLearningDrafts] = useState<LearningDraft[]>([]);
   const [aiKind, setAiKind] = useState("explain");
   const [aiContext, setAiContext] = useState("");
@@ -891,6 +904,53 @@ export function App() {
     }
   };
 
+  const openStudyReader = async (book: Book, pageIndex = 0) => {
+    setReaderBusy(true);
+    setReaderError(null);
+    setOperationError(null);
+    try {
+      const page = await invoke<StudyReaderPage>("get_study_reader_page", {
+        bookId: book.id,
+        pageIndex,
+      });
+      setReaderPage(page);
+      const storedPages = await invoke<OcrPage[]>("list_ocr_pages", {
+        bookId: book.id,
+      });
+      setOcrPages((current) => [
+        ...storedPages,
+        ...current.filter((item) => item.bookId !== book.id),
+      ]);
+    } catch (error) {
+      const nextError = desktopError(error);
+      setReaderError(nextError);
+      if (!readerPage) setOperationError(nextError);
+    } finally {
+      setReaderBusy(false);
+    }
+  };
+
+  const runReaderOcr = async () => {
+    if (!readerPage) return;
+    setReaderBusy(true);
+    setReaderError(null);
+    try {
+      const page = await invoke<OcrPage>("run_page_ocr", {
+        bookId: readerPage.bookId,
+        pageIndex: readerPage.pageIndex,
+      });
+      setOcrPages((current) => [
+        page,
+        ...current.filter((item) => item.id !== page.id),
+      ]);
+      await invoke<SearchRebuildSummary>("rebuild_search_index");
+    } catch (error) {
+      setReaderError(desktopError(error));
+    } finally {
+      setReaderBusy(false);
+    }
+  };
+
   const trimOcrPage = async (page: OcrPage) => {
     setStudyBusy(true);
     setStudyError(null);
@@ -1034,9 +1094,10 @@ export function App() {
                 key={item}
                 onClick={() =>
                   enabled &&
+                  (setReaderPage(null),
                   setActiveSection(
                     item as "Library" | "Study" | "Notes" | "Search",
-                  )
+                  ))
                 }
                 type="button"
               >
@@ -1074,7 +1135,54 @@ export function App() {
           <StartupPanel startup={startup} />
           {startup.kind === "healthy" && startup.status.platform.supported && (
             <>
-              {activeSection === "Study" ? (
+              {readerPage ? (
+                <StudyReader
+                  busy={readerBusy || studyBusy}
+                  ankiEnabled={studyModules.some(
+                    (module) => module.id === "anki" && module.enabled,
+                  )}
+                  dictionaryEnabled={studyModules.some(
+                    (module) => module.id === "dictionary" && module.enabled,
+                  )}
+                  dictionaryLookup={dictionaryLookup}
+                  dictionaryQuery={dictionaryQuery}
+                  error={readerError ?? studyError}
+                  ocrEnabled={studyModules.some(
+                    (module) =>
+                      module.id === "ocr" &&
+                      module.enabled &&
+                      module.available,
+                  )}
+                  ocrPage={
+                    ocrPages.find(
+                      (page) =>
+                        page.bookId === readerPage.bookId &&
+                        page.pageIndex === readerPage.pageIndex,
+                    ) ?? null
+                  }
+                  onBack={() => {
+                    setReaderPage(null);
+                    setReaderError(null);
+                  }}
+                  onCreateCard={(entry) => void createDictionaryDraft(entry)}
+                  onDictionaryQueryChange={setDictionaryQuery}
+                  onLookup={(query) => void lookupJapanese(query)}
+                  onNavigate={(pageIndex) => {
+                    const book = books.find(
+                      (item) => item.id === readerPage.bookId,
+                    );
+                    if (book) void openStudyReader(book, pageIndex);
+                  }}
+                  onOpenFolder={() => {
+                    const book = books.find(
+                      (item) => item.id === readerPage.bookId,
+                    );
+                    if (book) void openBookLocation(book);
+                  }}
+                  onRunOcr={() => void runReaderOcr()}
+                  page={readerPage}
+                />
+              ) : activeSection === "Study" ? (
                 <StudyWorkspace
                   aiContext={aiContext}
                   aiDrafts={aiDrafts}
@@ -1199,6 +1307,9 @@ export function App() {
                   onOpenFolder={() =>
                     void openBookLocation(selectedBookDetail)
                   }
+                  onReadStudy={() =>
+                    void openStudyReader(selectedBookDetail)
+                  }
                   onOpenNote={(noteId) => {
                     setActiveSection("Notes");
                     void readNote(noteId);
@@ -1216,6 +1327,7 @@ export function App() {
                   onEditBook={startEditingBook}
                   onOpenDetail={(book) => void openBookDetail(book.id)}
                   onOpenBook={(book) => void openBookLocation(book)}
+                  onReadStudy={(book) => void openStudyReader(book)}
                   onRepair={() => void runScan("repair_library")}
                   onRelinkBook={(book) => void relinkBook(book)}
                   onRescan={() => void runScan("rescan_library")}
@@ -1245,6 +1357,391 @@ export function App() {
         />
       )}
     </main>
+  );
+}
+
+export function StudyReader({
+  ankiEnabled,
+  busy,
+  dictionaryEnabled,
+  dictionaryLookup,
+  dictionaryQuery,
+  error,
+  ocrEnabled,
+  ocrPage,
+  onBack,
+  onCreateCard,
+  onDictionaryQueryChange,
+  onLookup,
+  onNavigate,
+  onOpenFolder,
+  onRunOcr,
+  page,
+}: {
+  ankiEnabled: boolean;
+  busy: boolean;
+  dictionaryEnabled: boolean;
+  dictionaryLookup: DictionaryLookup | null;
+  dictionaryQuery: string;
+  error: DesktopError | null;
+  ocrEnabled: boolean;
+  ocrPage: OcrPage | null;
+  onBack: () => void;
+  onCreateCard: (entry: DictionaryEntry) => void;
+  onDictionaryQueryChange: (query: string) => void;
+  onLookup: (query: string) => void;
+  onNavigate: (pageIndex: number) => void;
+  onOpenFolder: () => void;
+  onRunOcr: () => void;
+  page: StudyReaderPage;
+}) {
+  const [zoom, setZoom] = useState(100);
+  const [pageDraft, setPageDraft] = useState(page.pageIndex + 1);
+  const [dictionaryCollapsed, setDictionaryCollapsed] = useState(false);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const canGoBack = page.pageIndex > 0;
+  const canGoForward = page.pageIndex + 1 < page.pageCount;
+
+  useEffect(() => {
+    setPageDraft(page.pageIndex + 1);
+  }, [page.pageIndex]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft" && canGoBack && !busy) {
+        onNavigate(page.pageIndex - 1);
+      } else if (event.key === "ArrowRight" && canGoForward && !busy) {
+        onNavigate(page.pageIndex + 1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [busy, canGoBack, canGoForward, onNavigate, page.pageIndex]);
+
+  const lookupSelection = () => {
+    if (!dictionaryEnabled || busy || !transcriptRef.current) return;
+    const selection = window.getSelection();
+    if (
+      !selection?.anchorNode ||
+      !selection.focusNode ||
+      !transcriptRef.current.contains(selection.anchorNode) ||
+      !transcriptRef.current.contains(selection.focusNode)
+    ) {
+      return;
+    }
+    const query = normalizeLookupSelection(selection.toString());
+    if (!query) return;
+    onDictionaryQueryChange(query);
+    onLookup(query);
+  };
+
+  return (
+    <div className="reader-shell -mx-5 -my-7 md:-mx-7">
+      <header className="reader-toolbar sticky top-16 z-30 flex min-h-16 flex-wrap items-center gap-3 border-b border-stone-800 bg-stone-950/95 px-5 py-3 backdrop-blur md:px-7">
+        <button
+          className="rounded-lg border border-stone-700 px-3 py-2 text-sm hover:border-amber-500"
+          onClick={onBack}
+          type="button"
+        >
+          ← Library
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-sm font-semibold text-stone-100">
+            {page.bookTitle}
+          </h1>
+          <p className="mt-0.5 text-xs text-stone-500">
+            Page {page.pageIndex + 1} of {page.pageCount}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-stone-700 p-1">
+          <button
+            aria-label="Zoom out"
+            className="rounded px-2 py-1 text-sm hover:bg-stone-800"
+            onClick={() => setZoom((value) => Math.max(40, value - 10))}
+            type="button"
+          >
+            −
+          </button>
+          <span className="w-12 text-center text-xs text-stone-400">
+            {zoom}%
+          </span>
+          <button
+            aria-label="Zoom in"
+            className="rounded px-2 py-1 text-sm hover:bg-stone-800"
+            onClick={() => setZoom((value) => Math.min(220, value + 10))}
+            type="button"
+          >
+            +
+          </button>
+        </div>
+        <button
+          className="rounded-lg border border-stone-700 px-3 py-2 text-sm text-stone-300 hover:border-amber-500"
+          onClick={onOpenFolder}
+          type="button"
+        >
+          Open externally
+        </button>
+        <button
+          className="rounded-lg border border-stone-700 px-3 py-2 text-sm text-stone-300"
+          onClick={() => setDictionaryCollapsed((value) => !value)}
+          type="button"
+        >
+          {dictionaryCollapsed ? "Show dictionary" : "Hide dictionary"}
+        </button>
+      </header>
+
+      {error && (
+        <div className="px-5 pt-4 md:px-7">
+          <ErrorPanel error={error} />
+        </div>
+      )}
+
+      <div
+        className={`reader-layout grid min-h-[calc(100dvh-8rem)] ${
+          dictionaryCollapsed
+            ? "grid-cols-1"
+            : "xl:grid-cols-[minmax(0,1fr)_clamp(360px,28vw,500px)]"
+        }`}
+      >
+        <section className="min-w-0 bg-stone-900/30">
+          <div className="reader-canvas overflow-auto p-4 md:p-7">
+            <div
+              className="mx-auto w-fit transition-[width] duration-150"
+              style={{ width: `${zoom}%`, maxWidth: zoom <= 100 ? "100%" : "none" }}
+            >
+              <img
+                alt={`${page.bookTitle}, page ${page.pageIndex + 1}`}
+                className="block h-auto w-full rounded-sm bg-white shadow-2xl"
+                draggable={false}
+                height={page.height}
+                src={page.imageDataUrl}
+                width={page.width}
+              />
+            </div>
+          </div>
+        </section>
+
+        {!dictionaryCollapsed && (
+          <aside className="reader-dictionary border-l border-stone-800 bg-stone-950 p-5 xl:sticky xl:top-32 xl:h-[calc(100dvh-8rem)] xl:overflow-auto">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-400">
+                  Offline dictionary
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-white">
+                  Japanese → Vietnamese
+                </h2>
+              </div>
+              <button
+                aria-label="Collapse dictionary"
+                className="hidden rounded-lg border border-stone-700 px-2 py-1 text-stone-400 xl:block"
+                onClick={() => setDictionaryCollapsed(true)}
+                type="button"
+              >
+                →
+              </button>
+            </div>
+            <form
+              className="mt-5 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onLookup(dictionaryQuery);
+              }}
+            >
+              <input
+                aria-label="Dictionary query"
+                className="min-w-0 flex-1 rounded-lg border border-stone-700 bg-stone-900 px-3 py-2 text-stone-100"
+                disabled={!dictionaryEnabled || busy}
+                onChange={(event) => onDictionaryQueryChange(event.target.value)}
+                placeholder="Bôi đen chữ hoặc nhập từ…"
+                value={dictionaryQuery}
+              />
+              <button
+                className="rounded-lg bg-amber-400 px-4 py-2 font-semibold text-stone-950 disabled:opacity-40"
+                disabled={!dictionaryEnabled || busy || !dictionaryQuery.trim()}
+                type="submit"
+              >
+                Look up
+              </button>
+            </form>
+            <section className="mt-5 border-t border-stone-800 pt-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-200">
+                    Selectable page text
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-stone-500">
+                    Select a word or phrase below for instant lookup.
+                  </p>
+                </div>
+                {!ocrPage && (
+                  <button
+                    className="shrink-0 rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-stone-950 disabled:opacity-40"
+                    disabled={!ocrEnabled || busy}
+                    onClick={onRunOcr}
+                    type="button"
+                  >
+                    {busy ? "Recognizing…" : "OCR page"}
+                  </button>
+                )}
+              </div>
+              {ocrPage ? (
+                <div
+                  className="reader-transcript mt-3 max-h-64 select-text overflow-auto whitespace-pre-wrap rounded-lg border border-stone-700 bg-stone-900/70 p-4 text-base leading-8 text-stone-100"
+                  onMouseUp={lookupSelection}
+                  ref={transcriptRef}
+                >
+                  {ocrPage.text}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-lg border border-dashed border-stone-700 p-4 text-sm leading-6 text-stone-500">
+                  {ocrEnabled
+                    ? "This page has no saved OCR text yet."
+                    : "Enable the local OCR module in Study to recognize this page."}
+                </p>
+              )}
+            </section>
+            {!dictionaryEnabled ? (
+              <p className="mt-4 rounded-lg border border-dashed border-stone-700 p-4 text-sm text-stone-500">
+                Enable Dictionary in the Study workspace to use instant lookup.
+              </p>
+            ) : (
+              <DictionaryResults
+                ankiEnabled={ankiEnabled}
+                busy={busy}
+                lookup={dictionaryLookup}
+                onCreateCard={onCreateCard}
+                onLookup={onLookup}
+              />
+            )}
+          </aside>
+        )}
+      </div>
+
+      <footer className="reader-pager sticky bottom-0 z-20 flex items-center justify-center gap-4 border-t border-stone-800 bg-stone-950/95 px-4 py-3 backdrop-blur">
+        <button
+          className="rounded-lg border border-stone-700 px-4 py-2 text-sm disabled:opacity-30"
+          disabled={!canGoBack || busy}
+          onClick={() => onNavigate(page.pageIndex - 1)}
+          type="button"
+        >
+          ← Previous
+        </button>
+        <form
+          className="flex items-center gap-2 text-sm text-stone-400"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const target = Math.min(
+              page.pageCount,
+              Math.max(1, Math.trunc(pageDraft)),
+            );
+            if (target !== page.pageIndex + 1) onNavigate(target - 1);
+          }}
+        >
+          <input
+            aria-label="Go to page"
+            className="w-16 rounded-md border border-stone-700 bg-stone-900 px-2 py-1 text-center text-stone-100"
+            max={page.pageCount}
+            min={1}
+            onChange={(event) => setPageDraft(Number(event.target.value))}
+            type="number"
+            value={pageDraft}
+          />
+          <span>/ {page.pageCount}</span>
+        </form>
+        <button
+          className="rounded-lg border border-stone-700 px-4 py-2 text-sm disabled:opacity-30"
+          disabled={!canGoForward || busy}
+          onClick={() => onNavigate(page.pageIndex + 1)}
+          type="button"
+        >
+          Next →
+        </button>
+      </footer>
+    </div>
+  );
+}
+
+function DictionaryResults({
+  ankiEnabled,
+  busy,
+  lookup,
+  onCreateCard,
+  onLookup,
+}: {
+  ankiEnabled: boolean;
+  busy: boolean;
+  lookup: DictionaryLookup | null;
+  onCreateCard: (entry: DictionaryEntry) => void;
+  onLookup: (query: string) => void;
+}) {
+  if (!lookup) {
+    return (
+      <p className="mt-5 text-sm leading-6 text-stone-500">
+        Select Japanese text on the current page. Results will appear here
+        without covering the book.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-5 space-y-3">
+      {lookup.tokens.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-b border-stone-800 pb-4">
+          {lookup.tokens.map((token) => (
+            <button
+              className="rounded-full border border-stone-700 px-3 py-1 text-sm text-amber-300 hover:border-amber-500"
+              key={`${token.start}-${token.end}-${token.surface}`}
+              onClick={() => onLookup(token.surface)}
+              type="button"
+            >
+              {token.surface}
+            </button>
+          ))}
+        </div>
+      )}
+      {lookup.entries.length === 0 ? (
+        <p className="text-sm text-stone-400">
+          No entry in the installed dictionaries.
+        </p>
+      ) : (
+        lookup.entries.map((entry) => (
+          <article
+            className="rounded-lg border border-stone-800 bg-stone-900/60 p-4"
+            key={entry.id}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xl font-semibold text-white">
+                  {entry.expression}
+                </p>
+                <p className="text-sm text-amber-300">{entry.reading}</p>
+              </div>
+              <button
+                className="text-xs text-amber-400 disabled:text-stone-600"
+                disabled={!ankiEnabled || busy}
+                onClick={() => onCreateCard(entry)}
+                type="button"
+              >
+                Make card
+              </button>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-stone-200">
+              {entry.meaningVi}
+            </p>
+            <p className="mt-2 text-xs text-stone-500">
+              {entry.partOfSpeech}
+              {entry.hanViet ? ` · Hán–Việt: ${entry.hanViet}` : ""}
+            </p>
+          </article>
+        ))
+      )}
+    </div>
   );
 }
 
@@ -2317,6 +2814,7 @@ export function BookDetailPage({
   onNewNote,
   onOpenFolder,
   onOpenNote,
+  onReadStudy,
   onSave,
 }: {
   busy: boolean;
@@ -2329,6 +2827,7 @@ export function BookDetailPage({
   onNewNote: () => void;
   onOpenFolder: () => void;
   onOpenNote: (noteId: string) => void;
+  onReadStudy: () => void;
   onSave: (
     readingStatus: BookDetail["readingStatus"],
     tags: string[],
@@ -2403,6 +2902,17 @@ export function BookDetailPage({
                 </p>
               </div>
               <div className="flex gap-2">
+                <button
+                  className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 disabled:opacity-40"
+                  disabled={
+                    busy ||
+                    !["available", "unavailable"].includes(detail.status)
+                  }
+                  onClick={onReadStudy}
+                  type="button"
+                >
+                  Read &amp; Study
+                </button>
                 <button
                   className="rounded-lg border border-stone-700 px-3 py-2 text-sm"
                   onClick={onEditTitle}
@@ -2561,6 +3071,7 @@ function LibraryWorkspace({
   onEditBook,
   onOpenDetail,
   onOpenBook,
+  onReadStudy,
   onRepair,
   onRelinkBook,
   onRescan,
@@ -2581,6 +3092,7 @@ function LibraryWorkspace({
   onEditBook: (book: Book) => void;
   onOpenDetail: (book: Book) => void;
   onOpenBook: (book: Book) => void;
+  onReadStudy: (book: Book) => void;
   onRepair: () => void;
   onRelinkBook: (book: Book) => void;
   onRescan: () => void;
@@ -2708,6 +3220,7 @@ function LibraryWorkspace({
               onEdit={() => onEditBook(book)}
               onDetail={() => onOpenDetail(book)}
               onOpen={() => onOpenBook(book)}
+              onReadStudy={() => onReadStudy(book)}
               onRelink={() => onRelinkBook(book)}
               view={view}
             />
@@ -2724,6 +3237,7 @@ function BookCard({
   onEdit,
   onDetail,
   onOpen,
+  onReadStudy,
   onRelink,
   view,
 }: {
@@ -2732,6 +3246,7 @@ function BookCard({
   onEdit: () => void;
   onDetail: () => void;
   onOpen: () => void;
+  onReadStudy: () => void;
   onRelink: () => void;
   view: "grid" | "list";
 }) {
@@ -2776,6 +3291,7 @@ function BookCard({
           isOpening={isOpening}
           onEdit={onEdit}
           onOpen={onOpen}
+          onReadStudy={onReadStudy}
           onRelink={onRelink}
         />
       </article>
@@ -2798,6 +3314,7 @@ function BookCard({
           isOpening={isOpening}
           onEdit={onEdit}
           onOpen={onOpen}
+          onReadStudy={onReadStudy}
           onRelink={onRelink}
           overlay
         />
@@ -2829,6 +3346,7 @@ function BookActionsMenu({
   isOpening,
   onEdit,
   onOpen,
+  onReadStudy,
   onRelink,
   overlay = false,
 }: {
@@ -2837,6 +3355,7 @@ function BookActionsMenu({
   isOpening: boolean;
   onEdit: () => void;
   onOpen: () => void;
+  onReadStudy: () => void;
   onRelink: () => void;
   overlay?: boolean;
 }) {
@@ -2854,6 +3373,14 @@ function BookActionsMenu({
         •••
       </summary>
       <div className="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-stone-700 bg-stone-900 p-1 shadow-2xl">
+        <button
+          className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-amber-300 enabled:hover:bg-stone-800 disabled:text-stone-600"
+          disabled={!canOpen || isOpening || book.status === "missing"}
+          onClick={onReadStudy}
+          type="button"
+        >
+          Read &amp; Study
+        </button>
         <button
           className="block w-full rounded-md px-3 py-2 text-left text-sm text-stone-200 enabled:hover:bg-stone-800 disabled:text-stone-600"
           disabled={!canOpen || isOpening}

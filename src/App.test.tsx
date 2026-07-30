@@ -5,6 +5,7 @@ import {
   BookDetailPage,
   GlobalSearchWorkspace,
   NotesWorkspace,
+  StudyReader,
   StudyWorkspace,
   StartupPanel,
   filterBookChoices,
@@ -67,6 +68,69 @@ describe("App", () => {
     expect(normalizeLookupSelection("  画面  ")).toBe("画面");
     expect(normalizeLookupSelection("   ")).toBeNull();
     expect(normalizeLookupSelection("語".repeat(201))).toBeNull();
+  });
+
+  it("renders a two-column study reader with navigation, OCR, and dictionary", () => {
+    const markup = renderToStaticMarkup(
+      <StudyReader
+        ankiEnabled
+        busy={false}
+        dictionaryEnabled
+        dictionaryLookup={{
+          query: "画面",
+          entries: [
+            {
+              id: "entry-1",
+              expression: "画面",
+              reading: "がめん",
+              partOfSpeech: "noun",
+              meaningVi: "màn hình",
+              hanViet: "HỌA DIỆN",
+              packageName: "test",
+              packageVersion: "1",
+            },
+          ],
+          tokens: [],
+        }}
+        dictionaryQuery="画面"
+        error={null}
+        ocrEnabled
+        ocrPage={{
+          id: "ocr-1",
+          bookId: books[0].id,
+          bookTitle: books[0].title,
+          pageIndex: 1,
+          text: "画面を見ます。",
+          confidence: 90,
+          providerId: "test",
+          providerVersion: "1",
+          blocks: [],
+        }}
+        onBack={() => undefined}
+        onCreateCard={() => undefined}
+        onDictionaryQueryChange={() => undefined}
+        onLookup={() => undefined}
+        onNavigate={() => undefined}
+        onOpenFolder={() => undefined}
+        onRunOcr={() => undefined}
+        page={{
+          bookId: books[0].id,
+          bookTitle: books[0].title,
+          pageIndex: 1,
+          pageCount: 56,
+          width: 1200,
+          height: 1800,
+          imageDataUrl: "data:image/png;base64,AAAA",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("Japanese → Vietnamese");
+    expect(markup).toContain("Selectable page text");
+    expect(markup).toContain("画面を見ます。");
+    expect(markup).toContain("màn hình");
+    expect(markup).toContain('value="2"');
+    expect(markup).toContain("/ 56");
   });
 
   it("labels rescan and cover repair independently", () => {
@@ -163,6 +227,7 @@ describe("App", () => {
         onNewNote={() => undefined}
         onOpenFolder={() => undefined}
         onOpenNote={() => undefined}
+        onReadStudy={() => undefined}
         onSave={() => undefined}
       />,
     );
@@ -194,6 +259,7 @@ describe("App", () => {
         onNewNote={() => undefined}
         onOpenFolder={() => undefined}
         onOpenNote={() => undefined}
+        onReadStudy={() => undefined}
         onSave={() => undefined}
       />,
     );

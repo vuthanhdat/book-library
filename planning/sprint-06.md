@@ -6,15 +6,16 @@
 - **Milestone:** M6 — Optional intelligence
 - **Platforms:** Windows implementation and automated gates first; macOS Intel
   validation required before feature completion
-- **Feature IDs:** OCR-001, OCR-002, DICT-001 through DICT-003, AI-001 through
-  AI-004, ANKI-001, PLUGIN-001
+- **Feature IDs:** READ-002 through READ-004, READ-006, OCR-001, OCR-002,
+  DICT-001 through DICT-003, AI-001 through AI-004, ANKI-001, PLUGIN-001
 - **Sequencing:** explicitly authorized by the maintainer before M5 completion;
   absent M5 source remains `Planned`
 
 ## Goal
 
 Provide a useful offline Japanese study workflow: manually look up Japanese,
-explicitly OCR one authorized book page, search and reuse derived text, create
+open one authorized book page in a bounded Study Reader, explicitly OCR it,
+search and reuse derived text, create
 reviewable learning drafts, and export approved cards without making core
 library or Markdown workflows depend on any optional runtime.
 
@@ -49,6 +50,9 @@ library or Markdown workflows depend on any optional runtime.
     export, assistant drafts, and manifest inspection. Its wide-screen layout
     uses the available desktop width, and selecting OCR text triggers dictionary
     lookup directly.
+13. `Read & Study` renders one PDF or image-folder page at a time, provides
+    bounded keyboard/button navigation and zoom, reuses saved OCR text, and
+    keeps Vietnamese dictionary results in a persistent adjacent panel.
 
 ## Acceptance currently passing
 
@@ -66,6 +70,8 @@ library or Markdown workflows depend on any optional runtime.
 - TSV export preserves UTF-8, escapes tabs/newlines, and refuses overwrite;
 - frontend Study workspace renders enabled, disabled, and unavailable module
   states;
+- frontend Study Reader renders page, navigation, explicit OCR, selectable text,
+  and adjacent dictionary states without accepting source paths from React;
 - Rust tests, Clippy, TypeScript checks, frontend tests, production build, and
   Markdown links pass on the current Windows workspace.
 
@@ -86,7 +92,7 @@ library or Markdown workflows depend on any optional runtime.
 ## Explicit non-goals
 
 - automatic OCR during normal scans;
-- general embedded reader navigation, reading progress, or PDF annotations;
+- continuous embedded reading, reading progress, bookmarks, or PDF annotations;
 - hidden network requests or remote provider defaults;
 - representing the starter dictionary as a comprehensive Japanese dictionary;
 - automatic Markdown writes or Anki export;

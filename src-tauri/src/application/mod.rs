@@ -46,6 +46,6 @@ pub(crate) use status::{
 pub(crate) use study::{
     AiDraft, BookPageSource, DictionaryEntry, DictionaryImportSummary, DictionaryLookup,
     JapaneseToken, LearningDraft, LearningExporter, OcrBlock, OcrPageRecord, OcrProvider,
-    OcrRecognition, PageMaterializer, StudyAssistant, StudyError, StudyModule, StudyRepository,
-    StudyWorkspace, TrustedModule, normalize_japanese_ocr_text,
+    OcrRecognition, PageMaterializer, RenderedStudyPage, StudyAssistant, StudyError, StudyModule,
+    StudyReaderPage, StudyRepository, StudyWorkspace, TrustedModule, normalize_japanese_ocr_text,
 };

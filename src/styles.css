@@ -111,6 +111,20 @@ html[data-theme="light"] .hover\:text-amber-300:hover {
   color: #78350f;
 }
 
+html[data-theme="light"] .reader-canvas {
+  background: #e7e5e4;
+}
+
+html[data-theme="light"] .reader-transcript {
+  background: #fff;
+}
+
+.reader-transcript::selection,
+.reader-transcript *::selection {
+  background: rgb(245 158 11 / 0.45);
+  color: inherit;
+}
+
 html[data-theme="light"] .book-actions[open] > summary {
   background-color: #e7e5e4;
 }

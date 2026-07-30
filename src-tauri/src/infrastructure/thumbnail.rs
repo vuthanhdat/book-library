@@ -10,14 +10,16 @@ use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 
 use crate::{
     application::{
-        BookPageSource, DiscoveredBook, LibraryError, PageMaterializer, StudyError,
-        ThumbnailGenerator, ThumbnailOutcome, ThumbnailProgressStage,
+        BookPageSource, DiscoveredBook, LibraryError, PageMaterializer, RenderedStudyPage,
+        StudyError, ThumbnailGenerator, ThumbnailOutcome, ThumbnailProgressStage,
     },
     domain::{BookId, BookKind},
 };
 
 const MAX_WIDTH: u32 = 320;
 const MAX_HEIGHT: u32 = 448;
+const STUDY_PAGE_MAX_WIDTH: u32 = 2400;
+const STUDY_PAGE_MAX_HEIGHT: u32 = 3200;
 const GENERATION_TIMEOUT: Duration = Duration::from_secs(1);
 static PDFIUM_RENDER_LOCK: Mutex<()> = Mutex::new(());
 static PDFIUM: OnceLock<Option<Pdfium>> = OnceLock::new();
@@ -203,6 +205,23 @@ impl ThumbnailService {
         } else {
             return Err(StudyError::SourceUnavailable);
         };
+        let (width, height) = image.dimensions();
+        let scale = f64::min(
+            1.0,
+            f64::min(
+                f64::from(STUDY_PAGE_MAX_WIDTH) / f64::from(width.max(1)),
+                f64::from(STUDY_PAGE_MAX_HEIGHT) / f64::from(height.max(1)),
+            ),
+        );
+        let image = if scale < 1.0 {
+            image.resize(
+                (f64::from(width) * scale).round().max(1.0) as u32,
+                (f64::from(height) * scale).round().max(1.0) as u32,
+                image::imageops::FilterType::Lanczos3,
+            )
+        } else {
+            image
+        };
         image
             .save_with_format(&destination, ImageFormat::Png)
             .map_err(|_| StudyError::OcrFailed)?;
@@ -213,6 +232,19 @@ impl ThumbnailService {
 impl PageMaterializer for ThumbnailService {
     fn materialize(&self, source: &BookPageSource) -> Result<PathBuf, StudyError> {
         self.materialize_study_page(source)
+    }
+
+    fn render(&self, source: &BookPageSource) -> Result<RenderedStudyPage, StudyError> {
+        let path = self.materialize_study_page(source)?;
+        let image = image::open(&path).map_err(|_| StudyError::SourceUnavailable)?;
+        let (width, height) = image.dimensions();
+        let bytes = std::fs::read(path).map_err(|_| StudyError::SourceUnavailable)?;
+        Ok(RenderedStudyPage {
+            bytes,
+            width,
+            height,
+            media_type: "image/png".to_owned(),
+        })
     }
 }
 
@@ -337,6 +369,37 @@ mod tests {
             2
         );
         assert_eq!(std::fs::read_dir(library.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn study_reader_renders_one_authorized_image_page_without_modifying_source() {
+        let library = TempDir::new().unwrap();
+        let app_data = TempDir::new().unwrap();
+        std::fs::create_dir(library.path().join("book")).unwrap();
+        let source_path = library.path().join("book/page1.png");
+        DynamicImage::new_rgb8(3000, 4000)
+            .save(&source_path)
+            .unwrap();
+        let source_before = std::fs::read(&source_path).unwrap();
+        let source = BookPageSource {
+            book_id: BookId::new(),
+            title: "Japanese book".to_owned(),
+            page_index: 0,
+            page_count: 1,
+            source_fingerprint: "image-folder:test".to_owned(),
+            library_root: library.path().to_path_buf(),
+            source_path: source_path.clone(),
+            kind: "image_folder".to_owned(),
+        };
+        let service = ThumbnailService::new(app_data.path().to_path_buf(), PathBuf::new());
+
+        let rendered = service.render(&source).unwrap();
+
+        assert_eq!((rendered.width, rendered.height), (2400, 3200));
+        assert_eq!(rendered.media_type, "image/png");
+        assert!(!rendered.bytes.is_empty());
+        assert_eq!(std::fs::read(source_path).unwrap(), source_before);
+        assert!(app_data.path().join("study-pages").is_dir());
     }
 
     #[test]

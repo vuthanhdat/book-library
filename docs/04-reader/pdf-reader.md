@@ -4,9 +4,10 @@ Define the PDF reader module for rendering, navigating, bookmarking, and trackin
 
 ## Status
 
-**Deferred by ADR-009.** Current M2 opens the PDF's containing directory in the
-OS file manager. The embedded-reader design below is retained only as a possible
-future extension and is not an active product requirement.
+**In Progress under ADR-016.** M6 adds bounded one-page PDFium rendering, page
+navigation, presentation zoom, and adjacent OCR/dictionary study tools. External
+opening remains available. Durable progress, bookmarks, annotations, native PDF
+text selection, rotation, and advanced caching remain deferred.
 
 # Background
 

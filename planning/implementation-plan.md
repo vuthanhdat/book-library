@@ -278,8 +278,8 @@ offline availability of the core product.
 
 #### M6-B — Explicit page OCR
 
-- render or load one explicitly selected PDF/image page without implementing a
-  general embedded reader;
+- render or load one explicitly selected PDF/image page for OCR or the bounded
+  Study Reader without starting whole-book background work;
 - run a cancellable local OCR job only after a user request;
 - persist derived page text, confidence, blocks, bounding boxes, provider
   version, and source fingerprint in app data;
@@ -289,6 +289,10 @@ offline availability of the core product.
 #### M6-C — Japanese learning workflow
 
 - select an OCR block or paste Japanese text into the same lookup use case;
+- open a bounded single-page Study Reader for cataloged PDF and image-folder
+  books while retaining external opening;
+- navigate explicitly requested pages, zoom the presentation, and keep local
+  dictionary results adjacent to selectable saved OCR text;
 - show token boundaries as suggestions and allow the user to correct the lookup
   term;
 - create an editable Markdown-note insertion or flashcard draft with book

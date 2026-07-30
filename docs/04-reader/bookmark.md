@@ -4,7 +4,7 @@ Define bookmark behavior across PDF and image-folder books.
 
 ## Status
 
-**Deferred by ADR-009.** Embedded-reader bookmarks are not part of the current
+**Deferred by ADR-016.** Study Reader bookmarks are not part of the current
 roadmap.
 
 # Background

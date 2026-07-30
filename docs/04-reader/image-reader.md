@@ -4,9 +4,10 @@ Define the image-folder reader for manga, scanned documents, and folders of orde
 
 ## Status
 
-**Deferred by ADR-009.** Current M2 opens the cataloged image directory in the
-OS file manager. The embedded-reader design below is retained only as a possible
-future extension and is not an active product requirement.
+**In Progress under ADR-016.** M6 adds bounded single-page rendering, page
+navigation, presentation zoom, and adjacent OCR/dictionary study tools. External
+opening remains available. Continuous mode, durable progress, bookmarks,
+rotation, and advanced caching remain deferred.
 
 # Background
 

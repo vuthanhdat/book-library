@@ -159,6 +159,7 @@ the first M6 product slice; AI and the trusted-module proof follow it.
 | M6-12 Reading-assistance drafts | AI-002, AI-003, AI-004 | Done | M6-11 | Explain, translate, summarize, and flashcard modes persist visibly labeled review drafts without automatic note/export writes. |
 | M6-13 Trusted module proof | PLUGIN-001 | Done | M6-01 | Built-in manifests declare identity, version, capabilities, permissions, and runtime compatibility without an untrusted marketplace. |
 | M6-14 Cross-platform package and privacy gate | OCR-001, OCR-002, DICT-001, DICT-002, DICT-003, AI-001, ANKI-001, PLUGIN-001 | In Progress | M6-02–M6-13 | Automated Windows source gates pass; bundled OCR runtime, Japanese corpus benchmarks, macOS Intel smoke, and full privacy/package evidence remain. |
+| M6-15 Bounded Study Reader | READ-002, READ-003, READ-004, READ-006, OCR-001, OCR-002, DICT-001, DICT-002, DICT-003 | In Progress | M6-05, M6-08, ADR-016 | PDF and image books render one authorized page at a time with bounded navigation, zoom, explicit OCR, and adjacent instant dictionary lookup; cross-platform smoke and remaining fit/rotation criteria remain. |
 
 ## Deferred backlog
 

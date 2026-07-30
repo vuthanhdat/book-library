@@ -4,7 +4,8 @@ Define reading history, progress restoration, and session tracking.
 
 ## Status
 
-**Deferred by ADR-009.** External reader applications own reading state; Book
+**Deferred by ADR-016.** The bounded Study Reader does not own durable reading
+state; external reader applications continue to own their own reading state. Book
 Library does not track progress in the current roadmap.
 
 # Background
