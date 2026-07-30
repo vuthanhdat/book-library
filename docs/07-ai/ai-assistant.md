@@ -15,6 +15,9 @@ AI can help summarize, explain, translate, extract flashcards, and connect notes
 - AI outputs should be drafts until accepted by the user.
 - Support local or remote model providers in the architecture.
 - Persist conversations only if the user chooses to save them.
+- Keep conversation history ephemeral by default.
+- Show the exact assembled context and whether a provider is local or remote
+  before the request is submitted.
 
 # Responsibilities
 
@@ -26,6 +29,18 @@ AI can help summarize, explain, translate, extract flashcards, and connect notes
 # Architecture
 
 The AI assistant should be a module using a provider abstraction. A context builder assembles explicit context from local sources. The provider returns responses. The user can copy, insert into notes, save as Markdown, or discard outputs.
+
+AI follows the offline dictionary, OCR, and learning-draft slices. It is not a
+dependency of Japanese lookup, OCR search, note creation, or Anki-compatible
+export. Remote-provider settings and secrets remain isolated behind desktop and
+infrastructure adapters; disabling the module removes its network path from
+normal application workflows.
+
+The Sprint 06 baseline is a deterministic offline study-draft provider. It
+proves the provider boundary, module enablement, visible context, ephemeral
+request behavior, and draft ownership without claiming to be a general language
+model. Remote providers remain unimplemented until OS-backed secret storage and
+an additional provider/privacy ADR exist.
 
 # Mermaid Diagram
 
@@ -62,5 +77,5 @@ AI records:
 # Open Questions
 
 - Which provider abstraction should be implemented first?
-- Should AI conversation history be saved by default or ephemeral by default?
 - Should semantic search be part of AI assistant or a separate optional search module?
+- Which secure-storage adapter is used for each supported operating system?

@@ -2,9 +2,9 @@
 
 ## Status
 
-- **State:** Windows Done — macOS Intel validation pending
+- **State:** Completed
 - **Milestone:** M1 — Library MVP
-- **Platform order:** Windows 11 x64 implementation first; macOS Intel validation later
+- **Platforms validated:** Windows 11 x64 and macOS Intel x64
 - **Feature IDs:** LIB-001 through LIB-011
 
 ## Goal
@@ -13,8 +13,8 @@ Configure one real library root, scan PDFs and image folders without modifying
 them, reconcile an idempotent SQLite catalog, generate rebuildable thumbnails,
 and browse the resulting catalog on Windows.
 
-The shared M1 implementation and Windows acceptance pass are complete. M0 and
-M1 macOS evidence remains pending, so the cross-platform milestone is not closed.
+The shared M1 implementation and acceptance pass are complete on Windows 11 x64
+and macOS Intel x64.
 
 ## Work packages
 
@@ -49,9 +49,9 @@ M1 macOS evidence remains pending, so the cross-platform milestone is not closed
 - editing source books;
 - macOS Intel validation during the Windows implementation pass.
 
-## Windows result
+## Cross-platform result
 
-- All eight work packages are `Windows Done`.
+- All eight work packages are `Done`.
 - Rust: 24 tests pass and one real-library smoke test is opt-in.
 - Frontend: three interaction tests, type checking, and production build pass.
 - The read-only real-library smoke traversed more than 27,900 entries, cataloged
@@ -59,4 +59,5 @@ M1 macOS evidence remains pending, so the cross-platform milestone is not closed
   confirmed the 195-entry root inventory was unchanged.
 - Google Drive availability varied between passes; unseen records were retained
   as missing rather than deleted.
-- Required macOS Intel validation remains intentionally deferred.
+- The maintainer confirmed the required macOS Intel scan, catalog, thumbnail,
+  browser, and repair validation.

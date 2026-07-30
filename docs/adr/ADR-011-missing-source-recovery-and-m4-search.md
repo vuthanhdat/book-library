@@ -49,7 +49,8 @@ language-specific segmentation.
   workflows.
 - User-facing snippets escape source HTML and allow only app-inserted match
   markers.
-- macOS Intel validation remains pending until the Windows version is complete.
+- The same recovery and search behavior must be validated on Windows 11 x64 and
+  macOS Intel x64 without platform-specific domain or application forks.
 
 ## Revisit when
 

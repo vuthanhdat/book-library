@@ -26,6 +26,8 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-011](ADR-011-missing-source-recovery-and-m4-search.md) | Accepted | Recover missing sources only through authorized explicit relinking and use rebuildable trigram FTS5 for M4. |
 | [ADR-012](ADR-012-book-detail-and-explicit-cover-retry.md) | Accepted | Add app-local book workflow metadata and retry one cloud-backed cover explicitly without slowing normal scans. |
 | [ADR-013](ADR-013-bulk-cover-repair-targets.md) | Accepted | Treat Repair as a batch Force retry for books that have no usable cover. |
+| [ADR-014](ADR-014-m6-offline-japanese-study-baseline.md) | Accepted | Start M6 with disabled offline study modules, importable dictionary data, explicit page OCR, review drafts, and isolated provider/runtime failures. |
+| [ADR-015](ADR-015-user-provided-yomitan-dictionary-import.md) | Accepted | Import bounded user-provided Yomitan ZIP dictionaries without bundling or extracting their data. |
 
 ## ADR format
 

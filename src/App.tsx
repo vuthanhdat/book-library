@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   useCallback,
   useDeferredValue,
@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 
-const navigation = ["Library", "Recent", "Notes", "Search", "Settings"];
+const navigation = ["Library", "Study", "Recent", "Notes", "Search", "Settings"];
 
 export interface ApplicationStatus {
   databaseHealthy: boolean;
@@ -111,6 +111,11 @@ export interface NoteListItem {
   modifiedAtMs: number | null;
 }
 
+export function normalizeLookupSelection(value: string): string | null {
+  const selection = value.trim();
+  return selection && selection.length <= 200 ? selection : null;
+}
+
 interface NoteBacklink {
   id: string;
   title: string;
@@ -136,9 +141,9 @@ interface NotesRefreshSummary {
 }
 
 interface SearchResult {
-  sourceKind: "book" | "note";
+  sourceKind: "book" | "note" | "ocr_page";
   sourceId: string;
-  scope: "books" | "notes" | "tags" | "headings";
+  scope: "books" | "notes" | "tags" | "headings" | "ocr";
   title: string;
   snippet: string;
   relativePath: string;
@@ -155,6 +160,93 @@ interface SearchDiagnostics {
 interface SearchRebuildSummary {
   indexed: number;
   failed: number;
+}
+
+interface StudyModule {
+  id: "dictionary" | "ocr" | "anki" | "ai" | "trusted_modules";
+  enabled: boolean;
+  available: boolean;
+  status: "disabled" | "ready" | "unavailable";
+}
+
+interface DictionaryEntry {
+  id: string;
+  expression: string;
+  reading: string;
+  partOfSpeech: string;
+  meaningVi: string;
+  hanViet: string | null;
+  packageName: string;
+  packageVersion: string;
+}
+
+interface JapaneseToken {
+  surface: string;
+  start: number;
+  end: number;
+  entries: DictionaryEntry[];
+}
+
+interface DictionaryLookup {
+  query: string;
+  entries: DictionaryEntry[];
+  tokens: JapaneseToken[];
+}
+
+interface DictionaryImportSummary {
+  packageId: string;
+  imported: number;
+  skipped: number;
+}
+
+interface OcrBlock {
+  blockIndex: number;
+  text: string;
+  confidence: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface OcrPage {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  pageIndex: number;
+  text: string;
+  confidence: number;
+  providerId: string;
+  providerVersion: string;
+  blocks: OcrBlock[];
+}
+
+interface LearningDraft {
+  id: string;
+  sourceKind: string;
+  sourceId: string;
+  bookRelativePath: string | null;
+  pageIndex: number | null;
+  front: string;
+  back: string;
+  tags: string[];
+  status: "draft" | "approved" | "exported";
+}
+
+interface AiDraft {
+  id: string;
+  kind: string;
+  context: string;
+  content: string;
+  accepted: boolean;
+}
+
+interface TrustedModule {
+  id: string;
+  version: string;
+  capabilities: string[];
+  permissions: string[];
+  compatible: boolean;
 }
 
 export interface Book {
@@ -226,7 +318,7 @@ export function App() {
     useState<DesktopError | null>(null);
   const [coverProgress, setCoverProgress] = useState<string[]>([]);
   const [activeSection, setActiveSection] = useState<
-    "Library" | "Notes" | "Search"
+    "Library" | "Study" | "Notes" | "Search"
   >("Library");
   const [notesConfiguration, setNotesConfiguration] =
     useState<NotesConfiguration | null>(null);
@@ -245,6 +337,22 @@ export function App() {
   const [globalSearchBusy, setGlobalSearchBusy] = useState(false);
   const [globalSearchError, setGlobalSearchError] =
     useState<DesktopError | null>(null);
+  const [studyModules, setStudyModules] = useState<StudyModule[]>([]);
+  const [studyBusy, setStudyBusy] = useState(false);
+  const [studyError, setStudyError] = useState<DesktopError | null>(null);
+  const [studyNotice, setStudyNotice] = useState<string | null>(null);
+  const [dictionaryQuery, setDictionaryQuery] = useState("");
+  const [dictionaryLookup, setDictionaryLookup] =
+    useState<DictionaryLookup | null>(null);
+  const [saveLookupHistory, setSaveLookupHistory] = useState(false);
+  const [ocrBookId, setOcrBookId] = useState("");
+  const [ocrPageNumber, setOcrPageNumber] = useState(1);
+  const [ocrPages, setOcrPages] = useState<OcrPage[]>([]);
+  const [learningDrafts, setLearningDrafts] = useState<LearningDraft[]>([]);
+  const [aiKind, setAiKind] = useState("explain");
+  const [aiContext, setAiContext] = useState("");
+  const [aiDrafts, setAiDrafts] = useState<AiDraft[]>([]);
+  const [trustedModules, setTrustedModules] = useState<TrustedModule[]>([]);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const visibleBooks = useMemo(
     () => filterCatalogBooks(books, deferredSearchQuery),
@@ -259,6 +367,22 @@ export function App() {
 
   const loadBooks = useCallback(async () => {
     setBooks(await invoke<Book[]>("list_library_books"));
+  }, []);
+
+  const loadStudy = useCallback(async () => {
+    const [modules, pages, drafts, assistantDrafts, manifests] =
+      await Promise.all([
+        invoke<StudyModule[]>("get_study_modules"),
+        invoke<OcrPage[]>("list_ocr_pages", { bookId: null }),
+        invoke<LearningDraft[]>("list_learning_drafts"),
+        invoke<AiDraft[]>("list_ai_drafts"),
+        invoke<TrustedModule[]>("list_trusted_modules"),
+      ]);
+    setStudyModules(modules);
+    setOcrPages(pages);
+    setLearningDrafts(drafts);
+    setAiDrafts(assistantDrafts);
+    setTrustedModules(manifests);
   }, []);
 
   useEffect(() => {
@@ -295,11 +419,13 @@ export function App() {
       invoke<ApplicationStatus>("get_application_status"),
       invoke<LibraryConfiguration | null>("get_library_configuration"),
       invoke<NotesConfiguration | null>("get_notes_configuration"),
+      invoke<StudyModule[]>("get_study_modules"),
     ])
-      .then(async ([status, configured, configuredNotes]) => {
+      .then(async ([status, configured, configuredNotes, modules]) => {
         setStartup({ kind: "healthy", status });
         setConfiguration(configured);
         setNotesConfiguration(configuredNotes);
+        setStudyModules(modules);
         if (configured) await loadBooks();
         if (configuredNotes) await loadNotes();
       })
@@ -307,6 +433,15 @@ export function App() {
         setStartup({ kind: "error", error: desktopError(error) }),
       );
   }, [loadBooks, loadNotes]);
+
+  useEffect(() => {
+    if (activeSection !== "Study") return;
+    setStudyBusy(true);
+    setStudyError(null);
+    void loadStudy()
+      .catch((error) => setStudyError(desktopError(error)))
+      .finally(() => setStudyBusy(false));
+  }, [activeSection, loadStudy]);
 
   useEffect(() => {
     if (activeSection !== "Search") return;
@@ -651,6 +786,227 @@ export function App() {
     }
   };
 
+  const toggleStudyModule = async (module: StudyModule) => {
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      setStudyModules(
+        await invoke<StudyModule[]>("set_study_module_enabled", {
+          moduleId: module.id,
+          enabled: !module.enabled,
+        }),
+      );
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const lookupJapanese = async (query = dictionaryQuery) => {
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const result = await invoke<DictionaryLookup>("lookup_japanese", {
+        query,
+        saveHistory: saveLookupHistory,
+      });
+      setDictionaryQuery(result.query);
+      setDictionaryLookup(result);
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const importDictionaryPackage = async () => {
+    const selectedPath = await open({
+      directory: false,
+      multiple: false,
+      filters: [
+        { name: "Dictionary package", extensions: ["zip", "tsv"] },
+      ],
+    });
+    if (typeof selectedPath !== "string") return;
+    const isTsv = selectedPath.toLowerCase().endsWith(".tsv");
+    const name = isTsv ? window.prompt("Dictionary package name") : null;
+    const version = isTsv ? window.prompt("Package version", "1") : null;
+    const licenseId = window.prompt(
+      "License identifier or provenance",
+      "user-provided",
+    );
+    if (
+      (isTsv && (!name?.trim() || !version?.trim())) ||
+      !licenseId?.trim()
+    )
+      return;
+    setStudyBusy(true);
+    setStudyError(null);
+    setStudyNotice(null);
+    try {
+      const summary = await invoke<DictionaryImportSummary>(
+        "import_dictionary_package",
+        {
+        selectedPath,
+        name: name?.trim() || null,
+        version: version?.trim() || null,
+        licenseId,
+        },
+      );
+      setStudyNotice(
+        `Imported ${summary.imported.toLocaleString()} dictionary entries.${
+          summary.skipped > 0
+            ? ` Skipped ${summary.skipped.toLocaleString()} entries without usable definitions.`
+            : ""
+        }`,
+      );
+      if (dictionaryQuery.trim()) await lookupJapanese(dictionaryQuery);
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const runPageOcr = async () => {
+    if (!ocrBookId) return;
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const page = await invoke<OcrPage>("run_page_ocr", {
+        bookId: ocrBookId,
+        pageIndex: Math.max(0, ocrPageNumber - 1),
+      });
+      setOcrPages((current) => [
+        page,
+        ...current.filter((item) => item.id !== page.id),
+      ]);
+      setDictionaryQuery(page.text);
+      await invoke<SearchRebuildSummary>("rebuild_search_index");
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const trimOcrPage = async (page: OcrPage) => {
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const updated = await invoke<OcrPage>("trim_ocr_page", {
+        pageId: page.id,
+      });
+      setOcrPages((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (dictionaryQuery === page.text) {
+        setDictionaryQuery(updated.text);
+      }
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const createDictionaryDraft = async (entry: DictionaryEntry) => {
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const draft = await invoke<LearningDraft>("create_learning_draft", {
+        sourceKind: "dictionary_lookup",
+        sourceId: entry.id,
+        bookRelativePath: null,
+        pageIndex: null,
+        front: entry.expression,
+        back: `${entry.reading}\n${entry.meaningVi}${
+          entry.hanViet ? `\nHán–Việt: ${entry.hanViet}` : ""
+        }`,
+        tags: ["japanese", entry.partOfSpeech.replaceAll(" ", "-")],
+      });
+      setLearningDrafts((current) => [draft, ...current]);
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const createOcrDraft = async (page: OcrPage) => {
+    const book = books.find((item) => item.id === page.bookId);
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const draft = await invoke<LearningDraft>("create_learning_draft", {
+        sourceKind: "ocr_page",
+        sourceId: page.id,
+        bookRelativePath: book?.relativePath ?? null,
+        pageIndex: page.pageIndex,
+        front: page.text,
+        back: "Bổ sung cách đọc và nghĩa đã kiểm chứng.",
+        tags: ["japanese", "ocr"],
+      });
+      setLearningDrafts((current) => [draft, ...current]);
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const approveLearningDraft = async (draftId: string) => {
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const approved = await invoke<LearningDraft>("approve_learning_draft", {
+        draftId,
+      });
+      setLearningDrafts((current) =>
+        current.map((draft) => (draft.id === approved.id ? approved : draft)),
+      );
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const exportAnki = async () => {
+    const selectedPath = await save({
+      defaultPath: "book-library-anki.tsv",
+      filters: [{ name: "Anki TSV", extensions: ["tsv"] }],
+    });
+    if (typeof selectedPath !== "string") return;
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      await invoke<{ exported: number }>("export_anki_tsv", { selectedPath });
+      setLearningDrafts(await invoke("list_learning_drafts"));
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
+  const generateAiDraft = async () => {
+    setStudyBusy(true);
+    setStudyError(null);
+    try {
+      const draft = await invoke<AiDraft>("generate_ai_draft", {
+        kind: aiKind,
+        context: aiContext,
+      });
+      setAiDrafts((current) => [draft, ...current]);
+    } catch (error) {
+      setStudyError(desktopError(error));
+    } finally {
+      setStudyBusy(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-stone-950 text-stone-100">
       <div className="mx-auto min-h-screen max-w-[1920px]">
@@ -661,7 +1017,10 @@ export function App() {
           <nav className="order-3 flex w-full min-w-0 items-center justify-between gap-0 md:order-none md:w-auto md:flex-1 md:justify-start md:gap-1" aria-label="Primary navigation">
             {navigation.map((item) => {
               const enabled =
-                item === "Library" || item === "Notes" || item === "Search";
+                item === "Library" ||
+                item === "Study" ||
+                item === "Notes" ||
+                item === "Search";
               return (
               <button
                 className={`shrink-0 rounded-lg px-2 py-2 text-sm md:px-3 ${
@@ -675,7 +1034,9 @@ export function App() {
                 key={item}
                 onClick={() =>
                   enabled &&
-                  setActiveSection(item as "Library" | "Notes" | "Search")
+                  setActiveSection(
+                    item as "Library" | "Study" | "Notes" | "Search",
+                  )
                 }
                 type="button"
               >
@@ -713,7 +1074,52 @@ export function App() {
           <StartupPanel startup={startup} />
           {startup.kind === "healthy" && startup.status.platform.supported && (
             <>
-              {activeSection === "Search" ? (
+              {activeSection === "Study" ? (
+                <StudyWorkspace
+                  aiContext={aiContext}
+                  aiDrafts={aiDrafts}
+                  aiKind={aiKind}
+                  books={books}
+                  busy={studyBusy}
+                  dictionaryLookup={dictionaryLookup}
+                  dictionaryQuery={dictionaryQuery}
+                  error={studyError}
+                  notice={studyNotice}
+                  learningDrafts={learningDrafts}
+                  modules={studyModules}
+                  ocrBookId={ocrBookId}
+                  ocrPageNumber={ocrPageNumber}
+                  ocrPages={ocrPages}
+                  onAiContextChange={setAiContext}
+                  onAiKindChange={setAiKind}
+                  onApproveDraft={(draftId) =>
+                    void approveLearningDraft(draftId)
+                  }
+                  onCancelOcr={() => void invoke("cancel_page_ocr")}
+                  onClearHistory={() =>
+                    void invoke("clear_dictionary_history").catch((error) =>
+                      setStudyError(desktopError(error)),
+                    )
+                  }
+                  onCreateDictionaryDraft={(entry) =>
+                    void createDictionaryDraft(entry)
+                  }
+                  onCreateOcrDraft={(page) => void createOcrDraft(page)}
+                  onDictionaryQueryChange={setDictionaryQuery}
+                  onExport={() => void exportAnki()}
+                  onGenerateAi={() => void generateAiDraft()}
+                  onImportDictionary={() => void importDictionaryPackage()}
+                  onLookup={(query) => void lookupJapanese(query)}
+                  onOcrBookChange={setOcrBookId}
+                  onOcrPageChange={setOcrPageNumber}
+                  onRunOcr={() => void runPageOcr()}
+                  onSaveHistoryChange={setSaveLookupHistory}
+                  onToggleModule={(module) => void toggleStudyModule(module)}
+                  onTrimOcrPage={(page) => void trimOcrPage(page)}
+                  saveLookupHistory={saveLookupHistory}
+                  trustedModules={trustedModules}
+                />
+              ) : activeSection === "Search" ? (
                 <GlobalSearchWorkspace
                   busy={globalSearchBusy}
                   diagnostics={searchDiagnostics}
@@ -722,9 +1128,11 @@ export function App() {
                     if (result.sourceKind === "book") {
                       setActiveSection("Library");
                       void openBookDetail(result.sourceId);
-                    } else {
+                    } else if (result.sourceKind === "note") {
                       setActiveSection("Notes");
                       void readNote(result.sourceId);
+                    } else {
+                      setActiveSection("Study");
                     }
                   }}
                   onQueryChange={setGlobalQuery}
@@ -840,6 +1248,532 @@ export function App() {
   );
 }
 
+export function StudyWorkspace({
+  aiContext,
+  aiDrafts,
+  aiKind,
+  books,
+  busy,
+  dictionaryLookup,
+  dictionaryQuery,
+  error,
+  notice,
+  learningDrafts,
+  modules,
+  ocrBookId,
+  ocrPageNumber,
+  ocrPages,
+  onAiContextChange,
+  onAiKindChange,
+  onApproveDraft,
+  onCancelOcr,
+  onClearHistory,
+  onCreateDictionaryDraft,
+  onCreateOcrDraft,
+  onDictionaryQueryChange,
+  onExport,
+  onGenerateAi,
+  onImportDictionary,
+  onLookup,
+  onOcrBookChange,
+  onOcrPageChange,
+  onRunOcr,
+  onSaveHistoryChange,
+  onToggleModule,
+  onTrimOcrPage,
+  saveLookupHistory,
+  trustedModules,
+}: {
+  aiContext: string;
+  aiDrafts: AiDraft[];
+  aiKind: string;
+  books: Book[];
+  busy: boolean;
+  dictionaryLookup: DictionaryLookup | null;
+  dictionaryQuery: string;
+  error: DesktopError | null;
+  notice: string | null;
+  learningDrafts: LearningDraft[];
+  modules: StudyModule[];
+  ocrBookId: string;
+  ocrPageNumber: number;
+  ocrPages: OcrPage[];
+  onAiContextChange: (value: string) => void;
+  onAiKindChange: (value: string) => void;
+  onApproveDraft: (draftId: string) => void;
+  onCancelOcr: () => void;
+  onClearHistory: () => void;
+  onCreateDictionaryDraft: (entry: DictionaryEntry) => void;
+  onCreateOcrDraft: (page: OcrPage) => void;
+  onDictionaryQueryChange: (query: string) => void;
+  onExport: () => void;
+  onGenerateAi: () => void;
+  onImportDictionary: () => void;
+  onLookup: (query: string) => void;
+  onOcrBookChange: (bookId: string) => void;
+  onOcrPageChange: (page: number) => void;
+  onRunOcr: () => void;
+  onSaveHistoryChange: (enabled: boolean) => void;
+  onToggleModule: (module: StudyModule) => void;
+  onTrimOcrPage: (page: OcrPage) => void;
+  saveLookupHistory: boolean;
+  trustedModules: TrustedModule[];
+}) {
+  const dictionaryEnabled = modules.some(
+    (module) => module.id === "dictionary" && module.enabled,
+  );
+  const ocr = modules.find((module) => module.id === "ocr");
+  const ankiEnabled = modules.some(
+    (module) => module.id === "anki" && module.enabled,
+  );
+  const ai = modules.find((module) => module.id === "ai");
+  const lookupSelectedOcrText = (container: HTMLElement) => {
+    if (!dictionaryEnabled || busy) return;
+    const selection = window.getSelection();
+    if (
+      !selection?.anchorNode ||
+      !selection.focusNode ||
+      !container.contains(selection.anchorNode) ||
+      !container.contains(selection.focusNode)
+    ) {
+      return;
+    }
+    const query = normalizeLookupSelection(selection.toString());
+    if (!query) return;
+    onDictionaryQueryChange(query);
+    onLookup(query);
+  };
+
+  return (
+    <div className="w-full">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-400">
+            Japanese study
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold text-white">
+            Read, recognize, remember
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-400">
+            Offline dictionary lookup, explicit page OCR, reviewable learning
+            drafts, and Anki-compatible TSV export. Optional modules never alter
+            source books.
+          </p>
+        </div>
+        {busy && <p className="text-sm text-amber-300">Working locally…</p>}
+      </div>
+
+      {error && <div className="mt-5"><ErrorPanel error={error} /></div>}
+      {notice && !error && (
+        <p className="mt-5 rounded-xl border border-emerald-700/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">
+          {notice}
+        </p>
+      )}
+
+      <section className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {modules.map((module) => (
+          <button
+            className={`rounded-xl border p-4 text-left transition ${
+              module.enabled
+                ? "border-amber-500/60 bg-amber-500/10"
+                : "border-stone-800 bg-stone-900/40 hover:border-stone-700"
+            }`}
+            disabled={busy}
+            key={module.id}
+            onClick={() => onToggleModule(module)}
+            type="button"
+          >
+            <span className="block text-sm font-semibold capitalize text-stone-100">
+              {module.id.replace("_", " ")}
+            </span>
+            <span className="mt-1 block text-xs text-stone-400">
+              {module.status}
+              {!module.available ? " · runtime missing" : ""}
+            </span>
+          </button>
+        ))}
+      </section>
+
+      <div className="mt-7 grid items-start gap-6 xl:grid-cols-[minmax(420px,0.85fr)_minmax(620px,1.35fr)]">
+        <section className="rounded-xl border border-stone-800 bg-stone-900/40 p-5 xl:sticky xl:top-24 xl:max-h-[calc(100dvh-7rem)] xl:overflow-auto">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-white">
+              Offline Japanese dictionary
+            </h2>
+            <button
+              className="text-xs text-amber-400 hover:text-amber-300 disabled:text-stone-600"
+              disabled={!dictionaryEnabled || busy}
+              onClick={onImportDictionary}
+              type="button"
+            >
+              Import dictionary ZIP/TSV
+            </button>
+          </div>
+          <form
+            className="mt-4 flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onLookup(dictionaryQuery);
+            }}
+          >
+            <input
+              className="min-w-0 flex-1 rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-stone-100"
+              disabled={!dictionaryEnabled || busy}
+              onChange={(event) => onDictionaryQueryChange(event.target.value)}
+              placeholder="日本語、読む、にほん…"
+              value={dictionaryQuery}
+            />
+            <button
+              className="rounded-lg bg-amber-500 px-4 py-2 font-semibold text-stone-950 disabled:opacity-40"
+              disabled={!dictionaryEnabled || busy || !dictionaryQuery.trim()}
+              type="submit"
+            >
+              Look up
+            </button>
+          </form>
+          {!dictionaryEnabled && (
+            <p className="mt-3 text-sm text-stone-500">
+              Enable the dictionary module above to begin.
+            </p>
+          )}
+          {dictionaryEnabled && (
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-stone-400">
+              <label className="flex items-center gap-2">
+                <input
+                  checked={saveLookupHistory}
+                  onChange={(event) =>
+                    onSaveHistoryChange(event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                Save lookup history
+              </label>
+              <button
+                className="text-stone-500 hover:text-stone-300"
+                onClick={onClearHistory}
+                type="button"
+              >
+                Clear history
+              </button>
+            </div>
+          )}
+          {dictionaryLookup && (
+            <div className="mt-5 space-y-3">
+              {dictionaryLookup.tokens.length > 0 && (
+                <div className="flex flex-wrap gap-2 border-b border-stone-800 pb-4">
+                  {dictionaryLookup.tokens.map((token) => (
+                    <button
+                      className="rounded-full border border-stone-700 px-3 py-1 text-sm text-amber-300 hover:border-amber-500"
+                      key={`${token.start}-${token.end}-${token.surface}`}
+                      onClick={() => onLookup(token.surface)}
+                      type="button"
+                    >
+                      {token.surface}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {dictionaryLookup.entries.length === 0 ? (
+                <p className="text-sm text-stone-400">
+                  No entry in the installed starter dictionary.
+                </p>
+              ) : (
+                dictionaryLookup.entries.map((entry) => (
+                  <article
+                    className="rounded-lg border border-stone-800 bg-stone-950/70 p-4"
+                    key={entry.id}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xl font-semibold text-white">
+                          {entry.expression}
+                        </p>
+                        <p className="text-sm text-amber-300">{entry.reading}</p>
+                      </div>
+                      <button
+                        className="text-xs text-amber-400 hover:text-amber-300 disabled:text-stone-600"
+                        disabled={!ankiEnabled || busy}
+                        onClick={() => onCreateDictionaryDraft(entry)}
+                        type="button"
+                      >
+                        Make card
+                      </button>
+                    </div>
+                    <p className="mt-3 text-sm text-stone-200">
+                      {entry.meaningVi}
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      {entry.partOfSpeech}
+                      {entry.hanViet ? ` · Hán–Việt: ${entry.hanViet}` : ""}
+                    </p>
+                  </article>
+                ))
+              )}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-stone-800 bg-stone-900/40 p-6 lg:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-white">
+                Explicit page OCR
+              </h2>
+              <p className="mt-2 text-base leading-6 text-stone-400">
+                {!ocr?.enabled
+                  ? "OCR is off. Enable it here before choosing a book."
+                  : !ocr.available
+                    ? "Tesseract was not detected. Restart the app after installing it."
+                    : "Tesseract with Japanese language data is ready."}
+              </p>
+              {dictionaryEnabled && (
+                <p className="mt-1 text-sm text-amber-400/70">
+                  Select Japanese text below to look it up instantly.
+                </p>
+              )}
+            </div>
+            {ocr && !ocr.enabled && (
+              <button
+                className="rounded-lg border border-amber-500/70 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
+                disabled={busy}
+                onClick={() => onToggleModule(ocr)}
+                type="button"
+              >
+                Enable OCR
+              </button>
+            )}
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1fr)_120px_150px]">
+            <select
+              aria-label="Book to recognize"
+              className="min-h-14 min-w-0 rounded-lg border border-stone-700 bg-stone-950 px-4 py-3 text-base"
+              disabled={!ocr?.enabled || busy}
+              onChange={(event) => onOcrBookChange(event.target.value)}
+              value={ocrBookId}
+            >
+              <option value="">Choose a book…</option>
+              {books
+                .filter((book) => book.status === "available")
+                .map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
+                ))}
+            </select>
+            <input
+              aria-label="Page number"
+              className="min-h-14 rounded-lg border border-stone-700 bg-stone-950 px-4 py-3 text-base"
+              disabled={!ocr?.enabled || busy}
+              min={1}
+              onChange={(event) =>
+                onOcrPageChange(Math.max(1, Number(event.target.value)))
+              }
+              type="number"
+              value={ocrPageNumber}
+            />
+            {busy && ocr?.enabled ? (
+              <button
+                className="min-h-14 whitespace-nowrap rounded-lg border border-red-500/70 px-5 py-3 text-base font-semibold text-red-300 active:translate-y-px"
+                onClick={onCancelOcr}
+                type="button"
+              >
+                Cancel OCR
+              </button>
+            ) : (
+              <button
+                className="min-h-14 whitespace-nowrap rounded-lg bg-amber-500 px-5 py-3 text-base font-semibold text-stone-950 active:translate-y-px disabled:opacity-40"
+                disabled={!ocr?.enabled || !ocr.available || !ocrBookId}
+                onClick={onRunOcr}
+                type="button"
+              >
+                OCR page
+              </button>
+            )}
+          </div>
+          <div className="mt-7 max-h-[clamp(620px,72dvh,980px)] space-y-4 overflow-auto pr-1">
+            {ocrPages.map((page) => (
+              <article
+                className="rounded-xl border border-stone-800 bg-stone-950/70 p-5 sm:p-6"
+                key={page.id}
+              >
+                <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold leading-7 text-white">
+                      {page.bookTitle} · page {page.pageIndex + 1}
+                    </p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      {Math.round(page.confidence * 100)}% · {page.providerId}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      className="whitespace-nowrap rounded-lg border border-stone-700 px-4 py-2 text-sm font-semibold text-stone-300 hover:bg-stone-800 active:translate-y-px disabled:opacity-40"
+                      disabled={busy}
+                      onClick={() => onTrimOcrPage(page)}
+                      type="button"
+                    >
+                      Trim spaces
+                    </button>
+                    <button
+                      className="whitespace-nowrap rounded-lg border border-amber-500/60 px-4 py-2 text-sm font-semibold text-amber-400 hover:bg-amber-500/10 active:translate-y-px disabled:opacity-40"
+                      disabled={!dictionaryEnabled}
+                      onClick={() => onLookup(page.text)}
+                      type="button"
+                    >
+                      Look up
+                    </button>
+                    <button
+                      className="whitespace-nowrap rounded-lg border border-amber-500/60 px-4 py-2 text-sm font-semibold text-amber-400 hover:bg-amber-500/10 active:translate-y-px disabled:opacity-40"
+                      disabled={!ankiEnabled}
+                      onClick={() => onCreateOcrDraft(page)}
+                      type="button"
+                    >
+                      Make card
+                    </button>
+                  </div>
+                </div>
+                <p
+                  className="mt-5 cursor-text select-text whitespace-pre-wrap rounded-lg text-base leading-8 text-stone-200 outline-none ring-amber-500/60 selection:bg-amber-400/30 selection:text-inherit focus-visible:ring-2"
+                  onPointerUp={(event) =>
+                    lookupSelectedOcrText(event.currentTarget)
+                  }
+                  tabIndex={0}
+                  title="Select Japanese text to look it up"
+                >
+                  {page.text}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <section className="rounded-xl border border-stone-800 bg-stone-900/40 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-white">
+              Learning drafts
+            </h2>
+            <button
+              className="rounded-lg border border-amber-500/70 px-3 py-2 text-sm text-amber-300 disabled:opacity-40"
+              disabled={
+                busy ||
+                !ankiEnabled ||
+                !learningDrafts.some((draft) => draft.status === "approved")
+              }
+              onClick={onExport}
+              type="button"
+            >
+              Export approved TSV
+            </button>
+          </div>
+          <div className="mt-4 space-y-3">
+            {learningDrafts.length === 0 && (
+              <p className="text-sm text-stone-500">No learning drafts yet.</p>
+            )}
+            {learningDrafts.map((draft) => (
+              <article
+                className="rounded-lg border border-stone-800 bg-stone-950/70 p-4"
+                key={draft.id}
+              >
+                <div className="flex justify-between gap-3">
+                  <p className="font-semibold text-white">{draft.front}</p>
+                  <span className="text-xs uppercase tracking-wide text-stone-500">
+                    {draft.status}
+                  </span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-stone-300">
+                  {draft.back}
+                </p>
+                {draft.status === "draft" && (
+                  <button
+                    className="mt-3 text-xs text-amber-400"
+                    onClick={() => onApproveDraft(draft.id)}
+                    type="button"
+                  >
+                    Approve for export
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-stone-800 bg-stone-900/40 p-5">
+          <h2 className="text-lg font-semibold text-white">
+            Optional study assistant
+          </h2>
+          <div className="mt-4 flex gap-2">
+            <select
+              className="rounded-lg border border-stone-700 bg-stone-950 px-3 py-2"
+              disabled={!ai?.enabled || busy}
+              onChange={(event) => onAiKindChange(event.target.value)}
+              value={aiKind}
+            >
+              <option value="explain">Explain</option>
+              <option value="translate">Translate draft</option>
+              <option value="summarize">Summarize</option>
+              <option value="flashcard">Flashcard draft</option>
+            </select>
+            <button
+              className="rounded-lg bg-amber-500 px-4 py-2 font-semibold text-stone-950 disabled:opacity-40"
+              disabled={!ai?.enabled || busy || !aiContext.trim()}
+              onClick={onGenerateAi}
+              type="button"
+            >
+              Generate draft
+            </button>
+          </div>
+          <textarea
+            className="mt-3 min-h-28 w-full rounded-lg border border-stone-700 bg-stone-950 p-3 text-sm"
+            disabled={!ai?.enabled || busy}
+            onChange={(event) => onAiContextChange(event.target.value)}
+            placeholder="Context is processed locally by the built-in draft provider."
+            value={aiContext}
+          />
+          <div className="mt-4 space-y-3">
+            {aiDrafts.map((draft) => (
+              <article
+                className="rounded-lg border border-stone-800 bg-stone-950/70 p-4"
+                key={draft.id}
+              >
+                <p className="text-xs uppercase tracking-wide text-amber-400">
+                  {draft.kind} draft
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-stone-300">
+                  {draft.content}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <details className="mt-6 rounded-xl border border-stone-800 bg-stone-900/40 p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-stone-200">
+          Trusted module manifests
+        </summary>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {trustedModules.map((module) => (
+            <article
+              className="rounded-lg border border-stone-800 bg-stone-950/70 p-4 text-xs"
+              key={module.id}
+            >
+              <p className="font-semibold text-stone-200">{module.id}</p>
+              <p className="mt-1 text-stone-500">
+                v{module.version} · {module.compatible ? "compatible" : "unavailable"}
+              </p>
+              <p className="mt-2 text-stone-400">
+                {module.capabilities.join(", ")}
+              </p>
+            </article>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 export function GlobalSearchWorkspace({
   busy,
   diagnostics,
@@ -904,6 +1838,7 @@ export function GlobalSearchWorkspace({
           <option value="notes">Notes</option>
           <option value="headings">Headings</option>
           <option value="tags">Tags</option>
+          <option value="ocr">OCR text</option>
         </select>
       </div>
 

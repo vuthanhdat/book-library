@@ -2,9 +2,9 @@
 
 ## Status
 
-- **State:** Windows Done — macOS Intel validation pending
+- **State:** Completed
 - **Milestone:** M2 — External reading workflow
-- **Platform order:** Windows 11 x64 implementation first; macOS Intel validation later
+- **Platforms validated:** Windows 11 x64 and macOS Intel x64
 - **Feature IDs:** READ-001, READ-009, LIB-014, LIB-015
 
 ## Goal
@@ -44,9 +44,9 @@ content.
 - FTS5, note search, content extraction, fuzzy ranking, or web search;
 - macOS Intel validation during the Windows implementation pass.
 
-## Windows result
+## Cross-platform result
 
-- All four M2 work packages are `Windows Done`.
+- All M2 work packages are `Done`.
 - The desktop command accepts only a book UUID and resolves root/path through the
   catalog repository.
 - Application tests prove PDF-parent, image-folder, missing, and unknown-book
@@ -56,3 +56,5 @@ content.
   `user`, refreshes search immediately, and survives reconciliation.
 - Rust, Clippy, format, frontend tests, typecheck, web build, Tauri release build,
   MSI/NSIS packaging, and release launch smoke all pass.
+- The maintainer confirmed the required macOS Intel Finder, catalog-search, title
+  editing, and user-safe error validation.

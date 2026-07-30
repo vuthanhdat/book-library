@@ -2,11 +2,14 @@
 
 ## Status
 
-- **State:** Windows Done — macOS Intel validation pending
+- **State:** Completed
 - **Milestone:** M0 — Engineering foundation
-- **Implementation:** in progress — Windows application foundation passes locally;
-  disposable Drive watcher testing and macOS Intel evidence remain
+- **Implementation:** complete on Windows 11 x64 and macOS Intel x64
 - **Feature IDs:** ENG-001 through ENG-008
+
+The Windows automated and packaging evidence is retained below. The maintainer
+subsequently confirmed the required real macOS Intel validation, closing the
+cross-platform sprint and M0 milestone.
 
 ## Sprint goal
 

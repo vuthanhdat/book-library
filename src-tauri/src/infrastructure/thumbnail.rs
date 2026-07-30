@@ -10,7 +10,8 @@ use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 
 use crate::{
     application::{
-        DiscoveredBook, LibraryError, ThumbnailGenerator, ThumbnailOutcome, ThumbnailProgressStage,
+        BookPageSource, DiscoveredBook, LibraryError, PageMaterializer, StudyError,
+        ThumbnailGenerator, ThumbnailOutcome, ThumbnailProgressStage,
     },
     domain::{BookId, BookKind},
 };
@@ -155,6 +156,63 @@ impl ThumbnailService {
             source_fingerprint: book.fingerprint.as_str().to_owned(),
             page_count,
         })
+    }
+
+    fn materialize_study_page(&self, source: &BookPageSource) -> Result<PathBuf, StudyError> {
+        let authorized_root = source
+            .library_root
+            .canonicalize()
+            .map_err(|_| StudyError::SourceUnavailable)?;
+        let canonical_source = source
+            .source_path
+            .canonicalize()
+            .map_err(|_| StudyError::SourceUnavailable)?;
+        if !canonical_source.starts_with(&authorized_root) {
+            return Err(StudyError::SourceUnavailable);
+        }
+        let destination = self
+            .cache_root
+            .join("study-pages")
+            .join(format!("{}-{}.png", source.book_id, source.page_index));
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent).map_err(|_| StudyError::OcrFailed)?;
+        }
+        let image = if source.kind == "image_folder" {
+            image::open(&canonical_source).map_err(|_| StudyError::SourceUnavailable)?
+        } else if source.kind == "pdf_file" {
+            let _render_guard = acquire_render_lock(&PDFIUM_RENDER_LOCK);
+            let pdfium =
+                shared_pdfium(&self.pdfium_directory).map_err(|_| StudyError::OcrFailed)?;
+            let document = pdfium
+                .load_pdf_from_file(&canonical_source, None)
+                .map_err(|_| StudyError::SourceUnavailable)?;
+            let page_index =
+                i32::try_from(source.page_index).map_err(|_| StudyError::SourceUnavailable)?;
+            let page = document
+                .pages()
+                .get(page_index)
+                .map_err(|_| StudyError::SourceUnavailable)?;
+            page.render_with_config(
+                &PdfRenderConfig::new()
+                    .set_target_width(1800)
+                    .render_form_data(true),
+            )
+            .map_err(|_| StudyError::OcrFailed)?
+            .as_image()
+            .map_err(|_| StudyError::OcrFailed)?
+        } else {
+            return Err(StudyError::SourceUnavailable);
+        };
+        image
+            .save_with_format(&destination, ImageFormat::Png)
+            .map_err(|_| StudyError::OcrFailed)?;
+        Ok(destination)
+    }
+}
+
+impl PageMaterializer for ThumbnailService {
+    fn materialize(&self, source: &BookPageSource) -> Result<PathBuf, StudyError> {
+        self.materialize_study_page(source)
     }
 }
 

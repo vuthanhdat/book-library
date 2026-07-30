@@ -4,23 +4,34 @@ Book Library is a desktop-first, offline-first application for managing and read
 
 The application treats the user's filesystem as the source of truth. It does not upload books, copy them into a database, or require a cloud account. A folder synchronized by Google Drive Desktop is treated as an ordinary local folder.
 
-> **Current status:** The revised Windows M2 pass is complete. The app can
-> configure and scan a real library, search the catalog live, and open book
-> locations in Windows Explorer. macOS Intel validation remains deferred.
+> **Current status:** M0–M4 are complete on Windows 11 x64 and macOS Intel x64.
+> The app can manage a real filesystem library, open authorized source
+> locations, manage portable Markdown notes, recover missing sources, and search
+> books and notes entirely offline. M6 Japanese study functionality is now in
+> progress; M5 reliability/release source remains planned.
 
 ## Product scope
 
-The first usable release will support:
+The current cross-platform core supports:
 
 - selecting one local library root;
 - scanning PDF files and folders of ordered page images;
 - generating rebuildable thumbnails and metadata;
 - browsing books, searching the catalog live, and opening source folders in the
   operating system file manager;
-- storing notes as portable Markdown files;
-- searching local metadata and notes with SQLite FTS5.
+- editing app-local titles, reading status, and searchable book tags without
+  modifying source books;
+- creating, editing, linking, and refreshing portable Markdown notes;
+- recovering missing sources through authorized explicit relinking;
+- searching books, notes, headings, and tags with rebuildable SQLite FTS5
+  projections;
+- rebuilding search and repairing missing or invalid cover projections.
 
-OCR, Japanese dictionary lookup, AI assistance, Anki export, additional book formats, and plugins are optional later capabilities. They are not dependencies of the core reader.
+The in-progress M6 workspace adds optional offline Japanese dictionary lookup,
+explicit page OCR, reviewable learning drafts, and Anki-compatible TSV export.
+Users may import their own TSV or Yomitan ZIP dictionary packages; no community
+dictionary data is bundled. These modules are not dependencies of the core
+library, notes, or search workflows.
 
 ## Non-negotiable principles
 
@@ -40,9 +51,10 @@ OCR, Japanese dictionary lookup, AI assistance, Anki export, additional book for
 4. [System architecture](docs/02-architecture/architecture.md) — layers, modules, runtime boundaries, and data ownership.
 5. [Architecture decisions](docs/adr/README.md) — decisions that override unresolved options in design documents.
 6. [Implementation plan](planning/implementation-plan.md) — milestone delivery sequence.
-7. [Sprint 02](planning/sprint-02.md) — active Library MVP delivery record.
+7. [Sprint 06](planning/sprint-06.md) — active optional-intelligence delivery
+   record for offline Japanese study.
 
-## Planned implementation stack
+## Implementation stack
 
 - Tauri 2 desktop shell
 - React and TypeScript frontend

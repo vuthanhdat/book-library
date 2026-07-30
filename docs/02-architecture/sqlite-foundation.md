@@ -3,9 +3,8 @@
 ## Status
 
 - **Sprint:** Sprint 01
-- **Implementation:** in progress
-- **Validated:** Windows 11 x64 development build
-- **Pending:** real macOS Intel x64 initialization and concurrency validation
+- **Implementation:** complete
+- **Validated:** Windows 11 x64 and macOS Intel x64
 
 This document records implementation and recovery details for the SQLite foundation.
 ADR-001 owns the database choice and ADR-005 owns its location.
@@ -83,5 +82,6 @@ Windows. WAL remains deferred: SQLite documents its higher read/write concurrenc
 but it also introduces shared-memory and checkpoint behavior that is unnecessary
 for the current status flow. See [SQLite WAL](https://www.sqlite.org/wal.html).
 
-The absolute expanded user path is intentionally not recorded. macOS Intel app-data,
-reopen, and concurrency evidence remain required before M0-04 is `Done`.
+The absolute expanded user path is intentionally not recorded. The maintainer
+confirmed the corresponding macOS Intel app-data, reopen, migration, and
+concurrency validation, closing M0-04.

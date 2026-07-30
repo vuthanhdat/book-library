@@ -1,8 +1,9 @@
 # Documentation Guide
 
 This directory contains the product and technical specification for Book
-Library. The repository contains the active Windows implementation; documents
-remain authoritative for scope, decisions, and delivery status.
+Library. The repository contains the shared Windows 11 x64 and macOS Intel x64
+implementation through M4; documents remain authoritative for scope, decisions,
+and delivery status.
 
 ## Source-of-truth hierarchy
 
@@ -57,6 +58,7 @@ The system architecture owns dependency direction, module ownership, initial cod
 - [Sprint 03](../planning/sprint-03.md)
 - [Sprint 04](../planning/sprint-04.md)
 - [Sprint 05](../planning/sprint-05.md)
+- [Sprint 06](../planning/sprint-06.md)
 
 The implementation plan is the only roadmap document. The backlog decomposes milestones into slices, and the active sprint selects the work currently approved.
 
@@ -67,8 +69,10 @@ The implementation plan is the only roadmap document. The backlog decomposes mil
 | Product scope | Defined | Core reader and knowledge scope documented. |
 | Architecture baseline | Accepted | Desktop/offline/filesystem-first boundaries are fixed. |
 | Detailed module designs | Draft | Remaining questions become ADRs only when they block scheduled work. |
-| Application scaffold | In progress | M0–revised M2 Windows implementation and local quality gates pass; hosted CI and macOS Intel evidence remain. |
-| Current delivery target | Sprint 05 | Windows missing-source recovery and offline Search MVP. |
+| Cross-platform core | Completed through M4 | Windows 11 x64 and macOS Intel x64 validation covers the engineering foundation, library, external reading, Markdown knowledge, recovery, and offline search workflows. |
+| Latest completed sprint | Sprint 05 | Missing-source recovery, Book Detail, cover repair, and offline Search MVP. |
+| Active delivery | Sprint 06 / M6 | Offline Japanese dictionary, explicit page OCR, learning drafts, Anki TSV, optional assistant drafts, and trusted module manifests. |
+| Deferred release gate | M5 | Reliability and release work remains planned; the maintainer authorized M6 implementation before M5 without marking absent M5 source complete. |
 
 ## Documentation responsibilities
 

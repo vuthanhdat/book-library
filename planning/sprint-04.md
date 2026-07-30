@@ -2,9 +2,9 @@
 
 ## Status
 
-- **State:** Windows implementation complete; cross-platform validation pending
+- **State:** Completed
 - **Milestone:** M3 — Knowledge MVP
-- **Platform order:** Windows 11 x64 implementation first; macOS Intel validation later
+- **Platforms validated:** Windows 11 x64 and macOS Intel x64
 - **Feature IDs:** NOTE-001 through NOTE-008
 
 ## Goal
@@ -44,9 +44,9 @@ the filesystem canonical and SQLite projections rebuildable.
   affordances.
 - Windows x64 production build, hidden launch smoke check, MSI packaging, and
   NSIS setup packaging passed on 2026-07-26.
-- macOS Intel validation remains deferred until the Windows version is complete,
-  as requested; NOTE-001 through NOTE-008 therefore remain `In Progress` at the
-  cross-platform feature level.
+- The maintainer confirmed the required macOS Intel notes-root, Markdown
+  create/edit/refresh, external-open, and backlink validation; NOTE-001 through
+  NOTE-008 are `Completed`.
 
 ## Out of scope
 

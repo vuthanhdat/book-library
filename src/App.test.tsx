@@ -5,11 +5,13 @@ import {
   BookDetailPage,
   GlobalSearchWorkspace,
   NotesWorkspace,
+  StudyWorkspace,
   StartupPanel,
   filterBookChoices,
   filterCatalogBooks,
   isValidBookDisplayTitle,
   parseBookTags,
+  normalizeLookupSelection,
   resolveTheme,
   scanButtonLabels,
   safeSearchSnippet,
@@ -59,6 +61,12 @@ describe("App", () => {
     expect(resolveTheme("dark")).toBe("dark");
     expect(resolveTheme("unknown")).toBe("dark");
     expect(resolveTheme(null)).toBe("dark");
+  });
+
+  it("accepts a bounded selected OCR term for instant lookup", () => {
+    expect(normalizeLookupSelection("  画面  ")).toBe("画面");
+    expect(normalizeLookupSelection("   ")).toBeNull();
+    expect(normalizeLookupSelection("語".repeat(201))).toBeNull();
   });
 
   it("labels rescan and cover repair independently", () => {
@@ -294,5 +302,109 @@ describe("App", () => {
     expect(safeSearchSnippet("<script>x</script><mark>ok</mark>")).toBe(
       "&lt;script&gt;x&lt;/script&gt;<mark>ok</mark>",
     );
+  });
+
+  it("renders the offline Japanese study workflow and explicit module states", () => {
+    const markup = renderToStaticMarkup(
+      <StudyWorkspace
+        aiContext=""
+        aiDrafts={[]}
+        aiKind="explain"
+        books={books}
+        busy={false}
+        dictionaryLookup={{
+          query: "日本語",
+          tokens: [
+            { surface: "日本語", start: 0, end: 3, entries: [] },
+          ],
+          entries: [
+            {
+              id: "starter-002",
+              expression: "日本語",
+              reading: "にほんご",
+              partOfSpeech: "danh từ",
+              meaningVi: "tiếng Nhật",
+              hanViet: "NHẬT BẢN NGỮ",
+              packageName: "Book Library Japanese Starter",
+              packageVersion: "1",
+            },
+          ],
+        }}
+        dictionaryQuery="日本語"
+        error={null}
+        notice="Imported 266,903 dictionary entries."
+        learningDrafts={[]}
+        modules={[
+          {
+            id: "dictionary",
+            enabled: true,
+            available: true,
+            status: "ready",
+          },
+          {
+            id: "ocr",
+            enabled: false,
+            available: false,
+            status: "disabled",
+          },
+          {
+            id: "anki",
+            enabled: true,
+            available: true,
+            status: "ready",
+          },
+        ]}
+        ocrBookId=""
+        ocrPageNumber={1}
+        ocrPages={[
+          {
+            id: "ocr-page-1",
+            bookId: books[0].id,
+            bookTitle: books[0].title,
+            pageIndex: 0,
+            text: "日本語 を 勉強 する",
+            confidence: 0.91,
+            providerId: "tesseract-cli",
+            providerVersion: "system",
+            blocks: [],
+          },
+        ]}
+        onAiContextChange={() => undefined}
+        onAiKindChange={() => undefined}
+        onApproveDraft={() => undefined}
+        onCancelOcr={() => undefined}
+        onClearHistory={() => undefined}
+        onCreateDictionaryDraft={() => undefined}
+        onCreateOcrDraft={() => undefined}
+        onDictionaryQueryChange={() => undefined}
+        onExport={() => undefined}
+        onGenerateAi={() => undefined}
+        onImportDictionary={() => undefined}
+        onLookup={() => undefined}
+        onOcrBookChange={() => undefined}
+        onOcrPageChange={() => undefined}
+        onRunOcr={() => undefined}
+        onSaveHistoryChange={() => undefined}
+        onToggleModule={() => undefined}
+        onTrimOcrPage={() => undefined}
+        saveLookupHistory={false}
+        trustedModules={[]}
+      />,
+    );
+
+    expect(markup).toContain("Japanese study");
+    expect(markup).toContain("日本語");
+    expect(markup).toContain("にほんご");
+    expect(markup).toContain("tiếng Nhật");
+    expect(markup).toContain("Import dictionary ZIP/TSV");
+    expect(markup).toContain("Imported 266,903 dictionary entries.");
+    expect(markup).toContain("runtime missing");
+    expect(markup).toContain("OCR is off. Enable it here");
+    expect(markup).toContain("Enable OCR");
+    expect(markup).toContain("Trim spaces");
+    expect(markup).toContain(
+      "Select Japanese text below to look it up instantly.",
+    );
+    expect(markup).toContain("Export approved TSV");
   });
 });

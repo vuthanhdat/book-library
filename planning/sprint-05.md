@@ -2,9 +2,9 @@
 
 ## Status
 
-- **State:** Windows implementation complete; cross-platform validation pending
+- **State:** Completed
 - **Milestone:** M4 — Search MVP
-- **Platform order:** Windows 11 x64 first; macOS Intel validation later
+- **Platforms validated:** Windows 11 x64 and macOS Intel x64
 - **Feature IDs:** LIB-016 through LIB-018, SEARCH-001 through SEARCH-007
 
 ## Delivered scope
@@ -69,4 +69,5 @@
   Unicode catalog behavior plus Book Detail controls and hashtag normalization.
 - Windows production build, hidden launch smoke, MSI packaging, and NSIS setup
   packaging passed on 2026-07-26.
-- macOS Intel remains pending by explicit product sequencing.
+- The maintainer confirmed the required macOS Intel missing-source recovery,
+  Book Detail, cover repair, global search, and index diagnostics validation.

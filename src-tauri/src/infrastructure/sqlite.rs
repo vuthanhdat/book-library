@@ -9,18 +9,22 @@ use thiserror::Error;
 
 use crate::{
     application::{
-        ApplicationError, BookDetailError, BookDetailRecord, BookDetailRepository, BookListItem,
-        BookLocationRepository, BookMetadataError, BookMetadataRepository, BookRelocationError,
-        BookRelocationRepository, BookSourceLocation, BookThumbnailTarget, CatalogReconciliation,
-        DatabaseHealth, DiscoveredBook, LibraryConfiguration, LibraryConfigurationState,
-        LibraryError, LibraryRepository, LinkedBookNote, NoteBacklink, NoteDetail, NoteListItem,
-        NoteProjection, NoteRecord, NotesConfiguration, NotesError, NotesRefreshSummary,
-        NotesRepository, ScanReason, ScanResult, ScanSummary, SearchDiagnostics, SearchDocument,
-        SearchError, SearchRebuildSummary, SearchRepository, SearchResultItem, SourceLocationError,
-        ThumbnailOutcome,
+        AiDraft, ApplicationError, BookDetailError, BookDetailRecord, BookDetailRepository,
+        BookListItem, BookLocationRepository, BookMetadataError, BookMetadataRepository,
+        BookPageSource, BookRelocationError, BookRelocationRepository, BookSourceLocation,
+        BookThumbnailTarget, CatalogReconciliation, DatabaseHealth, DictionaryEntry,
+        DictionaryImportSummary, DiscoveredBook, LearningDraft, LibraryConfiguration,
+        LibraryConfigurationState, LibraryError, LibraryRepository, LinkedBookNote, NoteBacklink,
+        NoteDetail, NoteListItem, NoteProjection, NoteRecord, NotesConfiguration, NotesError,
+        NotesRefreshSummary, NotesRepository, OcrBlock, OcrPageRecord, OcrRecognition, ScanReason,
+        ScanResult, ScanSummary, SearchDiagnostics, SearchDocument, SearchError,
+        SearchRebuildSummary, SearchRepository, SearchResultItem, SourceLocationError, StudyError,
+        StudyModule, StudyRepository, ThumbnailOutcome,
     },
     domain::{BookId, BookKind, BookStatus, ContentFingerprint, LibraryId, NoteId, RelativePath},
 };
+
+use super::dictionary_package::parse_dictionary_package;
 
 const DATABASE_FILENAME: &str = "book-library.sqlite3";
 
@@ -236,6 +240,137 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
             book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
             tag TEXT NOT NULL,
             PRIMARY KEY(book_id, tag)
+        ) STRICT;
+    "#,
+    ),
+    (
+        6,
+        "optional_japanese_study",
+        r#"
+        CREATE TABLE module_settings (
+            module_id TEXT PRIMARY KEY NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+            config_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        INSERT INTO module_settings(module_id) VALUES
+            ('dictionary'), ('ocr'), ('anki'), ('ai'), ('trusted_modules');
+
+        CREATE TABLE dictionary_packages (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            package_version TEXT NOT NULL,
+            checksum TEXT NOT NULL,
+            license_id TEXT NOT NULL,
+            installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE dictionary_entries (
+            id TEXT PRIMARY KEY NOT NULL,
+            package_id TEXT NOT NULL REFERENCES dictionary_packages(id) ON DELETE CASCADE,
+            expression TEXT NOT NULL,
+            reading TEXT NOT NULL,
+            part_of_speech TEXT NOT NULL,
+            meaning_vi TEXT NOT NULL,
+            han_viet TEXT
+        ) STRICT;
+
+        CREATE INDEX dictionary_entries_expression_idx
+            ON dictionary_entries(expression);
+        CREATE INDEX dictionary_entries_reading_idx
+            ON dictionary_entries(reading);
+
+        INSERT INTO dictionary_packages
+            (id, name, package_version, checksum, license_id)
+        VALUES
+            ('builtin-ja-vi-starter', 'Book Library Japanese Starter', '1',
+             'builtin-v1', 'CC0-1.0');
+
+        INSERT INTO dictionary_entries
+            (id, package_id, expression, reading, part_of_speech, meaning_vi, han_viet)
+        VALUES
+            ('starter-001', 'builtin-ja-vi-starter', '日本', 'にほん', 'danh từ', 'Nhật Bản', 'NHẬT BẢN'),
+            ('starter-002', 'builtin-ja-vi-starter', '日本語', 'にほんご', 'danh từ', 'tiếng Nhật', 'NHẬT BẢN NGỮ'),
+            ('starter-003', 'builtin-ja-vi-starter', '本', 'ほん', 'danh từ', 'sách; quyển', 'BẢN'),
+            ('starter-004', 'builtin-ja-vi-starter', '読む', 'よむ', 'động từ', 'đọc', 'ĐỘC'),
+            ('starter-005', 'builtin-ja-vi-starter', '勉強', 'べんきょう', 'danh từ; động từ する', 'học tập', 'MIỄN CƯỜNG'),
+            ('starter-006', 'builtin-ja-vi-starter', '学ぶ', 'まなぶ', 'động từ', 'học; nghiên cứu', 'HỌC'),
+            ('starter-007', 'builtin-ja-vi-starter', '学生', 'がくせい', 'danh từ', 'học sinh; sinh viên', 'HỌC SINH'),
+            ('starter-008', 'builtin-ja-vi-starter', '先生', 'せんせい', 'danh từ', 'giáo viên; thầy cô', 'TIÊN SINH'),
+            ('starter-009', 'builtin-ja-vi-starter', '言葉', 'ことば', 'danh từ', 'từ ngữ; ngôn ngữ', 'NGÔN DIỆP'),
+            ('starter-010', 'builtin-ja-vi-starter', '漢字', 'かんじ', 'danh từ', 'chữ Hán; Kanji', 'HÁN TỰ'),
+            ('starter-011', 'builtin-ja-vi-starter', '意味', 'いみ', 'danh từ', 'ý nghĩa', 'Ý VỊ'),
+            ('starter-012', 'builtin-ja-vi-starter', '例', 'れい', 'danh từ', 'ví dụ', 'LỆ'),
+            ('starter-013', 'builtin-ja-vi-starter', '今日', 'きょう', 'danh từ', 'hôm nay', 'KIM NHẬT'),
+            ('starter-014', 'builtin-ja-vi-starter', '明日', 'あした', 'danh từ', 'ngày mai', 'MINH NHẬT'),
+            ('starter-015', 'builtin-ja-vi-starter', '私', 'わたし', 'đại từ', 'tôi', 'TƯ'),
+            ('starter-016', 'builtin-ja-vi-starter', '食べる', 'たべる', 'động từ', 'ăn', 'THỰC'),
+            ('starter-017', 'builtin-ja-vi-starter', '見る', 'みる', 'động từ', 'xem; nhìn', 'KIẾN'),
+            ('starter-018', 'builtin-ja-vi-starter', '聞く', 'きく', 'động từ', 'nghe; hỏi', 'VĂN'),
+            ('starter-019', 'builtin-ja-vi-starter', '話す', 'はなす', 'động từ', 'nói; trò chuyện', 'THOẠI'),
+            ('starter-020', 'builtin-ja-vi-starter', '翻訳', 'ほんやく', 'danh từ; động từ する', 'biên dịch', 'PHIÊN DỊCH');
+
+        CREATE TABLE dictionary_lookup_history (
+            id TEXT PRIMARY KEY NOT NULL,
+            query TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE ocr_pages (
+            id TEXT PRIMARY KEY NOT NULL,
+            book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            page_index INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            provider_id TEXT NOT NULL,
+            provider_version TEXT NOT NULL,
+            source_fingerprint TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(book_id, page_index)
+        ) STRICT;
+
+        CREATE TABLE ocr_blocks (
+            ocr_page_id TEXT NOT NULL REFERENCES ocr_pages(id) ON DELETE CASCADE,
+            block_index INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            x INTEGER NOT NULL,
+            y INTEGER NOT NULL,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            PRIMARY KEY(ocr_page_id, block_index)
+        ) STRICT;
+
+        CREATE TABLE learning_drafts (
+            id TEXT PRIMARY KEY NOT NULL,
+            source_kind TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            book_relative_path TEXT,
+            page_index INTEGER,
+            front TEXT NOT NULL,
+            back TEXT NOT NULL,
+            tags TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE anki_exports (
+            id TEXT PRIMARY KEY NOT NULL,
+            export_kind TEXT NOT NULL,
+            exported_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE ai_outputs (
+            id TEXT PRIMARY KEY NOT NULL,
+            output_kind TEXT NOT NULL,
+            context TEXT NOT NULL,
+            content TEXT NOT NULL,
+            accepted INTEGER NOT NULL DEFAULT 0 CHECK (accepted IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) STRICT;
     "#,
     ),
@@ -1779,6 +1914,701 @@ impl NotesRepository for SqliteDatabase {
     }
 }
 
+impl StudyRepository for SqliteDatabase {
+    fn modules(&self) -> Result<Vec<StudyModule>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT module_id, enabled
+                 FROM module_settings
+                 ORDER BY CASE module_id
+                   WHEN 'dictionary' THEN 1 WHEN 'ocr' THEN 2 WHEN 'anki' THEN 3
+                   WHEN 'ai' THEN 4 ELSE 5 END",
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        statement
+            .query_map([], |row| {
+                Ok(StudyModule {
+                    id: row.get(0)?,
+                    enabled: row.get(1)?,
+                    available: true,
+                    status: "unknown".to_owned(),
+                })
+            })
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn set_module_enabled(&self, module_id: &str, enabled: bool) -> Result<(), StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let changed = connection
+            .execute(
+                "UPDATE module_settings
+                 SET enabled = ?1, updated_at = CURRENT_TIMESTAMP
+                 WHERE module_id = ?2",
+                params![enabled, module_id],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StudyError::InvalidInput)
+        }
+    }
+
+    fn module_enabled(&self, module_id: &str) -> Result<bool, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        connection
+            .query_row(
+                "SELECT enabled FROM module_settings WHERE module_id = ?1",
+                [module_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .ok_or(StudyError::InvalidInput)
+    }
+
+    fn dictionary_lookup(&self, query: &str) -> Result<Vec<DictionaryEntry>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT dictionary_entries.id, expression, reading, part_of_speech,
+                        meaning_vi, han_viet, dictionary_packages.name,
+                        dictionary_packages.package_version
+                 FROM dictionary_entries
+                 JOIN dictionary_packages ON dictionary_packages.id = dictionary_entries.package_id
+                 WHERE expression = ?1 OR reading = ?1
+                    OR expression LIKE ?2 OR reading LIKE ?2
+                 ORDER BY
+                   CASE WHEN expression = ?1 OR reading = ?1 THEN 0 ELSE 1 END,
+                   length(expression), expression
+                 LIMIT 50",
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let prefix = format!("{query}%");
+        statement
+            .query_map(params![query, prefix], |row| {
+                Ok(DictionaryEntry {
+                    id: row.get(0)?,
+                    expression: row.get(1)?,
+                    reading: row.get(2)?,
+                    part_of_speech: row.get(3)?,
+                    meaning_vi: row.get(4)?,
+                    han_viet: row.get(5)?,
+                    package_name: row.get(6)?,
+                    package_version: row.get(7)?,
+                })
+            })
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn dictionary_terms(&self, query: &str) -> Result<Vec<String>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT DISTINCT expression
+                 FROM dictionary_entries
+                 WHERE instr(?1, expression) > 0
+                 ORDER BY length(expression) DESC, expression",
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        statement
+            .query_map(params![query], |row| row.get(0))
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn import_dictionary_package(
+        &self,
+        path: &Path,
+        name: Option<&str>,
+        version: Option<&str>,
+        license_id: &str,
+    ) -> Result<DictionaryImportSummary, StudyError> {
+        let package = parse_dictionary_package(path, name, version)?;
+        let package_id = uuid::Uuid::new_v4().to_string();
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        transaction
+            .execute(
+                "INSERT INTO dictionary_packages
+                   (id, name, package_version, checksum, license_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    package_id,
+                    package.name,
+                    package.version,
+                    package.checksum,
+                    license_id
+                ],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        {
+            let mut statement = transaction
+                .prepare(
+                    "INSERT INTO dictionary_entries
+                       (id, package_id, expression, reading, part_of_speech,
+                        meaning_vi, han_viet)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                )
+                .map_err(|_| StudyError::RepositoryFailed)?;
+            for (index, entry) in package.entries.iter().enumerate() {
+                statement
+                    .execute(params![
+                        format!("{package_id}-{index}"),
+                        package_id,
+                        entry.expression,
+                        entry.reading,
+                        entry.part_of_speech,
+                        entry.meaning_vi,
+                        entry.han_viet,
+                    ])
+                    .map_err(|_| StudyError::RepositoryFailed)?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        Ok(DictionaryImportSummary {
+            package_id,
+            imported: package.entries.len() as u64,
+            skipped: package.skipped,
+        })
+    }
+
+    fn save_lookup_history(&self, query: &str) -> Result<(), StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        connection
+            .execute(
+                "INSERT INTO dictionary_lookup_history(id, query) VALUES (?1, ?2)",
+                params![uuid::Uuid::new_v4().to_string(), query],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        Ok(())
+    }
+
+    fn clear_lookup_history(&self) -> Result<(), StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        connection
+            .execute("DELETE FROM dictionary_lookup_history", [])
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        Ok(())
+    }
+
+    fn book_page_source(
+        &self,
+        book_id: BookId,
+        page_index: u32,
+    ) -> Result<BookPageSource, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let row = connection
+            .query_row(
+                "SELECT books.title, books.relative_path, books.kind, books.fingerprint,
+                        configured_libraries.root_path
+                 FROM books
+                 JOIN configured_libraries ON configured_libraries.id = books.library_id
+                 WHERE books.id = ?1 AND books.status IN ('available', 'unavailable')",
+                [book_id.to_string()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .ok_or(StudyError::SourceUnavailable)?;
+        let (title, relative_path, kind, source_fingerprint, root) = row;
+        let library_root = PathBuf::from(root);
+        let page_relative_path = if kind == "image_folder" {
+            connection
+                .query_row(
+                    "SELECT relative_path
+                     FROM image_pages
+                     WHERE book_id = ?1 AND page_index = ?2",
+                    params![book_id.to_string(), i64::from(page_index)],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|_| StudyError::RepositoryFailed)?
+                .ok_or(StudyError::SourceUnavailable)?
+        } else {
+            relative_path.clone()
+        };
+        let source_path = library_root.join(&page_relative_path);
+        if !source_path.exists() {
+            return Err(StudyError::SourceUnavailable);
+        }
+        Ok(BookPageSource {
+            book_id,
+            title,
+            page_index,
+            source_fingerprint,
+            library_root,
+            source_path,
+            kind,
+        })
+    }
+
+    fn save_ocr_page(
+        &self,
+        source: &BookPageSource,
+        recognition: &OcrRecognition,
+    ) -> Result<OcrPageRecord, StudyError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let existing_id = transaction
+            .query_row(
+                "SELECT id FROM ocr_pages WHERE book_id = ?1 AND page_index = ?2",
+                params![source.book_id.to_string(), i64::from(source.page_index)],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let id = existing_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        transaction
+            .execute(
+                "INSERT INTO ocr_pages
+                   (id, book_id, page_index, text, confidence, provider_id,
+                    provider_version, source_fingerprint)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(book_id, page_index) DO UPDATE SET
+                   text = excluded.text, confidence = excluded.confidence,
+                   provider_id = excluded.provider_id,
+                   provider_version = excluded.provider_version,
+                   source_fingerprint = excluded.source_fingerprint,
+                   updated_at = CURRENT_TIMESTAMP",
+                params![
+                    id,
+                    source.book_id.to_string(),
+                    i64::from(source.page_index),
+                    recognition.text,
+                    f64::from(recognition.confidence),
+                    recognition.provider_id,
+                    recognition.provider_version,
+                    source.source_fingerprint,
+                ],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        transaction
+            .execute("DELETE FROM ocr_blocks WHERE ocr_page_id = ?1", [&id])
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        for block in &recognition.blocks {
+            transaction
+                .execute(
+                    "INSERT INTO ocr_blocks
+                       (ocr_page_id, block_index, text, confidence, x, y, width, height)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![
+                        id,
+                        i64::from(block.block_index),
+                        block.text,
+                        f64::from(block.confidence),
+                        i64::from(block.x),
+                        i64::from(block.y),
+                        i64::from(block.width),
+                        i64::from(block.height),
+                    ],
+                )
+                .map_err(|_| StudyError::RepositoryFailed)?;
+        }
+        transaction
+            .commit()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        Ok(OcrPageRecord {
+            id,
+            book_id: source.book_id.to_string(),
+            book_title: source.title.clone(),
+            page_index: source.page_index,
+            text: recognition.text.clone(),
+            confidence: recognition.confidence,
+            provider_id: recognition.provider_id.clone(),
+            provider_version: recognition.provider_version.clone(),
+            blocks: recognition.blocks.clone(),
+        })
+    }
+
+    fn list_ocr_pages(&self, book_id: Option<BookId>) -> Result<Vec<OcrPageRecord>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let query = if book_id.is_some() {
+            "SELECT ocr_pages.id, ocr_pages.book_id, books.title,
+                    ocr_pages.page_index, ocr_pages.text, ocr_pages.confidence,
+                    ocr_pages.provider_id, ocr_pages.provider_version
+             FROM ocr_pages JOIN books ON books.id = ocr_pages.book_id
+             WHERE ocr_pages.book_id = ?1
+             ORDER BY ocr_pages.page_index"
+        } else {
+            "SELECT ocr_pages.id, ocr_pages.book_id, books.title,
+                    ocr_pages.page_index, ocr_pages.text, ocr_pages.confidence,
+                    ocr_pages.provider_id, ocr_pages.provider_version
+             FROM ocr_pages JOIN books ON books.id = ocr_pages.book_id
+             ORDER BY books.title, ocr_pages.page_index"
+        };
+        let mut statement = connection
+            .prepare(query)
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mapper = |row: &rusqlite::Row<'_>| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, f64>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+            ))
+        };
+        let rows = if let Some(book_id) = book_id {
+            statement
+                .query_map([book_id.to_string()], mapper)
+                .map_err(|_| StudyError::RepositoryFailed)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| StudyError::RepositoryFailed)?
+        } else {
+            statement
+                .query_map([], mapper)
+                .map_err(|_| StudyError::RepositoryFailed)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| StudyError::RepositoryFailed)?
+        };
+        rows.into_iter()
+            .map(
+                |(
+                    id,
+                    book_id,
+                    book_title,
+                    page_index,
+                    text,
+                    confidence,
+                    provider_id,
+                    provider_version,
+                )| {
+                    let mut block_statement = connection
+                        .prepare(
+                            "SELECT block_index, text, confidence, x, y, width, height
+                             FROM ocr_blocks WHERE ocr_page_id = ?1
+                             ORDER BY block_index",
+                        )
+                        .map_err(|_| StudyError::RepositoryFailed)?;
+                    let blocks = block_statement
+                        .query_map([&id], |row| {
+                            Ok(OcrBlock {
+                                block_index: u32::try_from(row.get::<_, i64>(0)?).unwrap_or(0),
+                                text: row.get(1)?,
+                                confidence: row.get::<_, f64>(2)? as f32,
+                                x: u32::try_from(row.get::<_, i64>(3)?).unwrap_or(0),
+                                y: u32::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
+                                width: u32::try_from(row.get::<_, i64>(5)?).unwrap_or(0),
+                                height: u32::try_from(row.get::<_, i64>(6)?).unwrap_or(0),
+                            })
+                        })
+                        .map_err(|_| StudyError::RepositoryFailed)?
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| StudyError::RepositoryFailed)?;
+                    Ok(OcrPageRecord {
+                        id,
+                        book_id,
+                        book_title,
+                        page_index: u32::try_from(page_index)
+                            .map_err(|_| StudyError::RepositoryFailed)?,
+                        text,
+                        confidence: confidence as f32,
+                        provider_id,
+                        provider_version,
+                        blocks,
+                    })
+                },
+            )
+            .collect()
+    }
+
+    fn update_ocr_page_text(&self, page_id: &str, text: &str) -> Result<(), StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let changed = connection
+            .execute(
+                "UPDATE ocr_pages
+                 SET text = ?1, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?2",
+                params![text, page_id],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StudyError::SourceUnavailable)
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_learning_draft(
+        &self,
+        source_kind: &str,
+        source_id: &str,
+        book_relative_path: Option<&str>,
+        page_index: Option<u32>,
+        front: &str,
+        back: &str,
+        tags: &[String],
+    ) -> Result<LearningDraft, StudyError> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        connection
+            .execute(
+                "INSERT INTO learning_drafts
+                   (id, source_kind, source_id, book_relative_path, page_index,
+                    front, back, tags)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    id,
+                    source_kind,
+                    source_id,
+                    book_relative_path,
+                    page_index.map(i64::from),
+                    front,
+                    back,
+                    tags.join(" "),
+                ],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        Ok(LearningDraft {
+            id,
+            source_kind: source_kind.to_owned(),
+            source_id: source_id.to_owned(),
+            book_relative_path: book_relative_path.map(str::to_owned),
+            page_index,
+            front: front.to_owned(),
+            back: back.to_owned(),
+            tags: tags.to_vec(),
+            status: "draft".to_owned(),
+        })
+    }
+
+    fn list_learning_drafts(&self) -> Result<Vec<LearningDraft>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, source_kind, source_id, book_relative_path, page_index,
+                        front, back, tags, status
+                 FROM learning_drafts
+                 ORDER BY created_at DESC, id",
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        statement
+            .query_map([], learning_draft_from_row)
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn approve_learning_draft(&self, draft_id: &str) -> Result<LearningDraft, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let changed = connection
+            .execute(
+                "UPDATE learning_drafts
+                 SET status = 'approved', updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?1 AND status <> 'exported'",
+                [draft_id],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        if changed == 0 {
+            return Err(StudyError::DraftNotFound);
+        }
+        connection
+            .query_row(
+                "SELECT id, source_kind, source_id, book_relative_path, page_index,
+                        front, back, tags, status
+                 FROM learning_drafts WHERE id = ?1",
+                [draft_id],
+                learning_draft_from_row,
+            )
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn approved_learning_drafts(&self) -> Result<Vec<LearningDraft>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, source_kind, source_id, book_relative_path, page_index,
+                        front, back, tags, status
+                 FROM learning_drafts
+                 WHERE status = 'approved'
+                 ORDER BY created_at, id",
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        statement
+            .query_map([], learning_draft_from_row)
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn mark_learning_drafts_exported(&self, draft_ids: &[String]) -> Result<(), StudyError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let export_id = uuid::Uuid::new_v4().to_string();
+        transaction
+            .execute(
+                "INSERT INTO anki_exports(id, export_kind, exported_count)
+                 VALUES (?1, 'tsv', ?2)",
+                params![
+                    export_id,
+                    i64::try_from(draft_ids.len()).unwrap_or(i64::MAX)
+                ],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        for id in draft_ids {
+            transaction
+                .execute(
+                    "UPDATE learning_drafts
+                     SET status = 'exported', updated_at = CURRENT_TIMESTAMP
+                     WHERE id = ?1 AND status = 'approved'",
+                    [id],
+                )
+                .map_err(|_| StudyError::RepositoryFailed)?;
+        }
+        transaction
+            .commit()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+
+    fn save_ai_draft(
+        &self,
+        kind: &str,
+        context: &str,
+        content: &str,
+    ) -> Result<AiDraft, StudyError> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        connection
+            .execute(
+                "INSERT INTO ai_outputs(id, output_kind, context, content)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![id, kind, context, content],
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        Ok(AiDraft {
+            id,
+            kind: kind.to_owned(),
+            context: context.to_owned(),
+            content: content.to_owned(),
+            accepted: false,
+        })
+    }
+
+    fn list_ai_drafts(&self) -> Result<Vec<AiDraft>, StudyError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, output_kind, context, content, accepted
+                 FROM ai_outputs ORDER BY created_at DESC, id",
+            )
+            .map_err(|_| StudyError::RepositoryFailed)?;
+        statement
+            .query_map([], |row| {
+                Ok(AiDraft {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    context: row.get(2)?,
+                    content: row.get(3)?,
+                    accepted: row.get(4)?,
+                })
+            })
+            .map_err(|_| StudyError::RepositoryFailed)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| StudyError::RepositoryFailed)
+    }
+}
+
+fn learning_draft_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LearningDraft> {
+    let tags = row.get::<_, String>(7)?;
+    Ok(LearningDraft {
+        id: row.get(0)?,
+        source_kind: row.get(1)?,
+        source_id: row.get(2)?,
+        book_relative_path: row.get(3)?,
+        page_index: row
+            .get::<_, Option<i64>>(4)?
+            .and_then(|value| u32::try_from(value).ok()),
+        front: row.get(5)?,
+        back: row.get(6)?,
+        tags: tags.split_whitespace().map(str::to_owned).collect(),
+        status: row.get(8)?,
+    })
+}
+
 impl SearchRepository for SqliteDatabase {
     fn enqueue_search_rebuild(&self) -> Result<(), SearchError> {
         let connection = self
@@ -1908,6 +2738,34 @@ impl SearchRepository for SqliteDatabase {
                         source_kind: "note".to_owned(),
                         source_id: row.get(0)?,
                         scope: "tags".to_owned(),
+                        title: row.get(1)?,
+                        relative_path: row.get(2)?,
+                        status: row.get(3)?,
+                        body: row.get(4)?,
+                    })
+                })
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            documents.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| SearchError::IndexUnavailable)?,
+            );
+        }
+        {
+            let mut statement = connection
+                .prepare(
+                    "SELECT ocr_pages.id, books.title, books.relative_path,
+                            books.status, ocr_pages.text
+                     FROM ocr_pages
+                     JOIN books ON books.id = ocr_pages.book_id
+                     ORDER BY books.title, ocr_pages.page_index",
+                )
+                .map_err(|_| SearchError::IndexUnavailable)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok(SearchDocument {
+                        source_kind: "ocr_page".to_owned(),
+                        source_id: row.get(0)?,
+                        scope: "ocr".to_owned(),
                         title: row.get(1)?,
                         relative_path: row.get(2)?,
                         status: row.get(3)?,
@@ -2103,6 +2961,7 @@ mod tests {
         infrastructure::{FilesystemScanner, MarkdownNotesStore},
     };
     use std::{
+        io::Write,
         sync::{Arc, Barrier},
         thread,
     };
@@ -2174,6 +3033,220 @@ mod tests {
 
         assert!(database.check_health().is_ok());
         assert!(!database.has_configured_library().unwrap());
+    }
+
+    #[test]
+    fn optional_study_modules_are_disabled_and_dictionary_works_after_opt_in() {
+        let app_data = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+
+        assert!(!database.module_enabled("dictionary").unwrap());
+        database.set_module_enabled("dictionary", true).unwrap();
+        let entries = database.dictionary_lookup("日本語").unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].reading, "にほんご");
+        assert_eq!(entries[0].meaning_vi, "tiếng Nhật");
+        assert_eq!(entries[0].package_name, "Book Library Japanese Starter");
+        assert!(
+            database
+                .dictionary_terms("日本語を読む")
+                .unwrap()
+                .contains(&"読む".to_owned())
+        );
+
+        let package = app_data.path().join("custom.tsv");
+        fs::write(
+            &package,
+            "expression\treading\tpart_of_speech\tmeaning_vi\than_viet\n図書館\tとしょかん\tdanh từ\tthư viện\tĐỒ THƯ QUÁN\n",
+        )
+        .unwrap();
+        let imported = database
+            .import_dictionary_package(&package, Some("Fixture"), Some("1"), "CC0-1.0")
+            .unwrap();
+        assert_eq!(imported.imported, 1);
+        assert_eq!(
+            database.dictionary_lookup("図書館").unwrap()[0].meaning_vi,
+            "thư viện"
+        );
+    }
+
+    #[test]
+    fn imports_a_yomitan_zip_with_vietnamese_glosses_and_detected_metadata() {
+        let app_data = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let package = app_data.path().join("mazii-fixture.zip");
+        {
+            let file = fs::File::create(&package).unwrap();
+            let mut archive = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            archive.start_file("index.json", options).unwrap();
+            archive
+                .write_all(
+                    br#"{"title":"Mazii Vietnamese fixture","revision":"2026.07","format":3}"#,
+                )
+                .unwrap();
+            archive.start_file("term_bank_1.json", options).unwrap();
+            archive
+                .write_all(
+                    r#"[
+                      ["画面","がめん","danh từ","",0,["HỌA DIỆN\n1. màn hình"],1,""],
+                      ["勉強","","danh từ; động từ","",0,[{"type":"structured-content","content":["1. học tập",{"tag":"br","content":"2. sự học"}]}],2,""],
+                      ["空定義","からていぎ","","",0,[""],3,""]
+                    ]"#
+                    .as_bytes(),
+                )
+                .unwrap();
+            archive.finish().unwrap();
+        }
+
+        let imported = database
+            .import_dictionary_package(&package, None, None, "user-provided")
+            .unwrap();
+
+        assert_eq!(imported.imported, 2);
+        assert_eq!(imported.skipped, 1);
+        let screen = database.dictionary_lookup("画面").unwrap();
+        assert_eq!(screen[0].reading, "がめん");
+        assert_eq!(screen[0].meaning_vi, "HỌA DIỆN\n1. màn hình");
+        assert_eq!(screen[0].package_name, "Mazii Vietnamese fixture");
+        assert_eq!(screen[0].package_version, "2026.07");
+        let study = database.dictionary_lookup("勉強").unwrap();
+        let imported_study = study
+            .iter()
+            .find(|entry| entry.package_name == "Mazii Vietnamese fixture")
+            .unwrap();
+        assert_eq!(imported_study.reading, "勉強");
+        assert_eq!(imported_study.meaning_vi, "1. học tập\n2. sự học");
+    }
+
+    #[test]
+    fn rejects_a_yomitan_zip_without_an_index_before_writing_any_rows() {
+        let app_data = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let package = app_data.path().join("invalid.zip");
+        {
+            let file = fs::File::create(&package).unwrap();
+            let mut archive = zip::ZipWriter::new(file);
+            archive
+                .start_file("term_bank_1.json", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive
+                .write_all(r#"[["画面","がめん","","",0,["màn hình"],1,""]]"#.as_bytes())
+                .unwrap();
+            archive.finish().unwrap();
+        }
+        let before: i64 = database
+            .connection
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        assert_eq!(
+            database.import_dictionary_package(&package, None, None, "user-provided"),
+            Err(StudyError::DictionaryPackageInvalid)
+        );
+        let after: i64 = database
+            .connection
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    #[ignore = "requires BOOK_LIBRARY_YOMITAN_SMOKE_PACKAGE and a user-provided package"]
+    fn imports_a_real_user_provided_yomitan_package() {
+        let package = std::env::var_os("BOOK_LIBRARY_YOMITAN_SMOKE_PACKAGE")
+            .map(PathBuf::from)
+            .expect("set BOOK_LIBRARY_YOMITAN_SMOKE_PACKAGE");
+        let app_data = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+
+        let imported = database
+            .import_dictionary_package(&package, None, None, "user-provided-smoke")
+            .unwrap();
+
+        assert!(imported.imported > 250_000);
+        assert!(!database.dictionary_lookup("画面").unwrap().is_empty());
+    }
+
+    #[test]
+    fn ocr_text_is_rebuildable_search_content_and_learning_drafts_require_approval() {
+        let app_data = TempDir::new().unwrap();
+        let library = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let book_id = BookId::new();
+        let library_id = LibraryId::new();
+        std::fs::write(library.path().join("日本語.pdf"), b"%PDF-test").unwrap();
+        {
+            let connection = database.connection.lock().unwrap();
+            connection
+                .execute(
+                    "INSERT INTO configured_libraries(id, root_path) VALUES (?1, ?2)",
+                    params![library_id.to_string(), library.path().to_string_lossy()],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO books
+                       (id, library_id, kind, relative_path, path_key, title, status,
+                        fingerprint, thumbnail_status)
+                     VALUES (?1, ?2, 'pdf_file', '日本語.pdf', '日本語.pdf',
+                             'Japanese', 'available', 'fixture', 'pending')",
+                    params![book_id.to_string(), library_id.to_string()],
+                )
+                .unwrap();
+        }
+        let source = database.book_page_source(book_id, 0).unwrap();
+        let page = database
+            .save_ocr_page(
+                &source,
+                &OcrRecognition {
+                    text: "日本語を勉強する".to_owned(),
+                    confidence: 0.92,
+                    provider_id: "fake".to_owned(),
+                    provider_version: "1".to_owned(),
+                    blocks: vec![OcrBlock {
+                        block_index: 0,
+                        text: "日本語".to_owned(),
+                        confidence: 0.95,
+                        x: 1,
+                        y: 2,
+                        width: 30,
+                        height: 40,
+                    }],
+                },
+            )
+            .unwrap();
+        let (documents, _) = database.canonical_search_documents().unwrap();
+        assert!(documents.iter().any(|document| {
+            document.source_id == page.id
+                && document.scope == "ocr"
+                && document.body.contains("勉強")
+        }));
+
+        let draft = database
+            .create_learning_draft(
+                "ocr_page",
+                &page.id,
+                Some("日本語.pdf"),
+                Some(0),
+                "日本語",
+                "にほんご — tiếng Nhật",
+                &["japanese".to_owned()],
+            )
+            .unwrap();
+        assert!(database.approved_learning_drafts().unwrap().is_empty());
+        database.approve_learning_draft(&draft.id).unwrap();
+        assert_eq!(database.approved_learning_drafts().unwrap().len(), 1);
     }
 
     #[test]

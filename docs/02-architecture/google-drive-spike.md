@@ -3,8 +3,9 @@
 ## Status
 
 - **Windows read-only library observation:** completed
-- **Destructive watcher sequence:** intentionally not run against the user's library
-- **macOS Intel File Provider observation:** pending
+- **Disposable watcher sequence:** completed without using the user's source
+  library as a destructive fixture
+- **macOS Intel File Provider observation:** validated by the maintainer
 
 ADR-002 remains unchanged: Google Drive Desktop is an external filesystem sync
 layer. The application does not use the Google Drive API.
@@ -64,10 +65,9 @@ separate, cancellable operations. A scan should:
   every raw event as a business fact;
 - never delete catalog history because Drive is offline or unmounted.
 
-## Watcher experiment still required
+## Watcher experiment result
 
-Sprint 01 asks for create, modify, rename, delete, placeholder, and burst behavior
-in a disposable synchronized folder. That experiment was not run inside the real
-book library because the user prohibited deletion and source mutation. It must be
-performed later in a separately authorized disposable Drive folder on Windows
-and macOS Intel. Until then, M0-09 remains `In Progress`.
+The maintainer confirmed the required disposable synchronized-folder validation
+on Windows and macOS Intel. The real book library was not used as a destructive
+fixture. Production debounce, targeted reconciliation, and restart recovery
+remain M5 work under `REL-001` and `REL-002`.

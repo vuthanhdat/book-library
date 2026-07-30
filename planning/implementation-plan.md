@@ -2,9 +2,15 @@
 
 ## Status
 
-- **Current milestone:** M2 — External reading workflow (Windows implementation pass)
-- **Current sprint:** [Sprint 03](sprint-03.md)
-- **Implementation state:** M0, M1, and revised M2 Windows passes are complete locally; macOS Intel validation remains deferred by execution order
+- **Completed milestones:** M0–M4 on Windows 11 x64 and macOS Intel x64
+- **Latest completed sprint:** [Sprint 05](sprint-05.md)
+- **Current implementation milestone:** M6 — Optional intelligence
+- **Active sprint:** [Sprint 06](sprint-06.md)
+- **M5 status:** Still planned in source/status terms; the maintainer explicitly
+  authorized M6 implementation before the M5 exit gate
+- **Implementation state:** The cross-platform engineering foundation, library,
+  external reading, Markdown knowledge, missing-source recovery, Book Detail,
+  and offline search workflows are complete
 - **Feature status source:** [Feature catalog](../docs/01-product/feature-catalog.md)
 - **Technical decision source:** [Accepted ADRs](../docs/adr/README.md)
 
@@ -33,7 +39,7 @@ Build vertical slices in dependency order. A milestone closes only when its user
 ```mermaid
 flowchart LR
     M0["M0 Engineering foundation"] --> M1["M1 Library MVP"]
-    M1 --> M2["M2 Reading MVP"]
+    M1 --> M2["M2 External reading workflow"]
     M2 --> M3["M3 Knowledge MVP"]
     M3 --> M4["M4 Search MVP"]
     M4 --> M5["M5 Reliability and release"]
@@ -239,22 +245,85 @@ The application is safe for everyday use on a real library and can be installed 
 
 ### Outcome
 
-Optional modules add OCR and language/AI workflows without changing the reliability or offline availability of the core product.
+Optional modules turn selected book pages and Japanese text into an offline
+lookup, note, search, and flashcard workflow without changing the reliability or
+offline availability of the core product.
 
-Candidate slices:
+### Entry gate and sequencing exception
 
-- OCR jobs and per-page text storage;
-- offline Japanese dictionary data;
-- provider abstraction for explain, translate, summarize, and flashcard drafts;
-- explicit acceptance before generated text becomes a canonical note;
-- Anki-compatible export;
-- trusted in-process module manifest proof of concept.
+- The normal roadmap requires the M5 release, backup, job-recovery, diagnostics,
+  and cross-platform packaging gates first. For Sprint 06, the maintainer
+  explicitly waived this sequencing dependency for M6 implementation only. The
+  waiver does not mark any unimplemented M5 feature complete and does not waive
+  M5 before a dependable public release;
+- a provider/data licensing spike selects distributable Japanese dictionary,
+  Kanji, Vietnamese/Hán-Việt, tokenizer, and OCR inputs;
+- any new native runtime or model packaging choice is accepted in an ADR before
+  production implementation;
+- optional-module settings can disable every M6 adapter without migration or
+  startup failure in the core.
+
+### Delivery order
+
+#### M6-A — Offline Japanese dictionary
+
+- import versioned local dictionary packages into rebuildable app-data indexes;
+- normalize entries behind application-owned dictionary and Japanese-analysis
+  ports;
+- support manual word, reading, and Kanji lookup before any OCR dependency;
+- include reading, part of speech, senses, Kanji metadata, and licensed
+  Vietnamese/Hán-Việt data when available;
+- keep lookup history disabled by default and provide explicit clear-history
+  behavior.
+
+#### M6-B — Explicit page OCR
+
+- render or load one explicitly selected PDF/image page without implementing a
+  general embedded reader;
+- run a cancellable local OCR job only after a user request;
+- persist derived page text, confidence, blocks, bounding boxes, provider
+  version, and source fingerprint in app data;
+- enqueue completed OCR text into the existing rebuildable FTS5 pipeline;
+- allow retry, delete, and rebuild without modifying the source book.
+
+#### M6-C — Japanese learning workflow
+
+- select an OCR block or paste Japanese text into the same lookup use case;
+- show token boundaries as suggestions and allow the user to correct the lookup
+  term;
+- create an editable Markdown-note insertion or flashcard draft with book
+  relative path, page index, dictionary provenance, and optional bounded image
+  crop;
+- export only explicitly approved drafts as UTF-8 TSV for Anki import.
+
+#### M6-D — Optional AI and module proof
+
+- add an isolated provider boundary and secure settings for explicitly
+  configured local or remote models;
+- keep conversations ephemeral by default and show the exact context before any
+  remote request;
+- return explanations, translations, summaries, and cards as drafts that require
+  explicit acceptance;
+- validate a minimal trusted in-process module manifest without exposing an
+  untrusted plugin marketplace.
 
 ### Exit gate
 
 - disabling all optional modules leaves M1–M5 workflows unchanged;
+- manual Japanese lookup, one-page OCR, OCR-to-lookup, note/card drafting, and
+  TSV export pass on Windows 11 x64 and macOS Intel x64;
+- normal library scanning never runs OCR, hydrates cloud files, or loads
+  dictionary/model runtimes implicitly;
+- OCR, dictionary, and AI failures are isolated per provider/job and cannot
+  corrupt canonical books or Markdown notes;
+- deleting OCR text and dictionary indexes removes no canonical content and both
+  can be rebuilt from their declared sources;
+- packaged dictionary/model licenses, versions, checksums, and update behavior
+  are documented;
 - network access and secrets remain isolated behind provider adapters;
-- generated content is distinguishable from user-authored canonical content.
+- remote requests require explicit configuration and visible user context;
+- generated content is distinguishable from user-authored canonical content and
+  is never written or exported without explicit acceptance.
 
 ## Cross-cutting workstreams
 
@@ -295,7 +364,9 @@ Candidate slices:
 
 ## Release mapping
 
-- `0.1.0`: M0–M2 — dual-platform engineering foundation, library management, PDF/image reading, progress, and bookmarks.
+- `0.1.0`: M0–M2 — dual-platform engineering foundation, library management,
+  live catalog filtering, and authorized source-location opening through the OS
+  file manager.
 - `0.2.0`: M3 — Markdown notes and Obsidian interoperability.
 - `0.3.0`: M4–M5 — local search, recovery, performance, Windows/macOS Intel packaging, and first dependable release.
 - later versions: M6 optional intelligence and any explicitly approved additional platform targets after the core is dependable.

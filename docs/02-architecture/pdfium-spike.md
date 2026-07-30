@@ -3,7 +3,8 @@
 ## Status
 
 - **Windows 11 x64:** native load and one-page render passed
-- **macOS Intel x64:** dependency and packaging path researched; real render pending
+- **macOS Intel x64:** native load, fixture render, and application-bundle smoke
+  validated by the maintainer
 - **Production reader:** out of scope for Sprint 01
 
 ## Decision for the reader milestone
@@ -66,7 +67,8 @@ dimensions and render identity. For the first reader:
 - [PDFium binary distributions](https://github.com/bblanchon/pdfium-binaries)
 - [PDFium upstream license](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/LICENSE)
 
-## Remaining gate
+## Completed gate
 
-Run the committed smoke program with the pinned macOS x64 binary on the owner's
-real Intel Mac, then repeat from the intended application-bundle layout.
+The maintainer confirmed the committed fixture render and intended
+application-bundle smoke on a real Intel Mac. Distribution signing,
+notarization, and release packaging remain M5 responsibilities.

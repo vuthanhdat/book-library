@@ -120,7 +120,7 @@ where
         }
         let scope = match scope {
             None | Some("all") => None,
-            Some("books" | "notes" | "tags" | "headings") => scope,
+            Some("books" | "notes" | "tags" | "headings" | "ocr") => scope,
             Some(_) => return Err(SearchError::InvalidQuery),
         };
         self.repository.search(query, scope, 100)

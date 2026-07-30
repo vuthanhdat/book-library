@@ -4,9 +4,10 @@
 
 This catalog is the authoritative inventory of product capabilities, implementation status, and milestone ownership.
 
-The repository contains an active Windows implementation. No feature may be
-marked `In Progress` or `Completed` until implementation work exists on an active
-branch and satisfies the status rules below.
+The repository contains a shared Windows 11 x64 and macOS Intel x64
+implementation through M4. No feature may be marked `In Progress` or `Completed`
+until implementation work exists on an active branch and satisfies the status
+rules below.
 
 ## Feature status
 
@@ -37,43 +38,43 @@ Design documents alone never justify `In Progress` or `Completed`.
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| ENG-001 | Cross-platform Tauri 2 + React + TypeScript application scaffold | In Progress | M0 |
-| ENG-002 | Rust modular-monolith structure and dependency boundaries | In Progress | M0 |
-| ENG-003 | Typed Tauri command/event contracts | In Progress | M0 |
-| ENG-004 | SQLite connection and migration runner | In Progress | M0 |
-| ENG-005 | Domain identifiers, `RelativePath`, and common errors | In Progress | M0 |
-| ENG-006 | Structured logging and safe diagnostics | In Progress | M0 |
-| ENG-007 | Windows/macOS Rust, frontend, build, and Markdown CI quality gates | In Progress | M0 |
-| ENG-008 | Temporary library and SQLite test fixtures | In Progress | M0 |
+| ENG-001 | Cross-platform Tauri 2 + React + TypeScript application scaffold | Completed | M0 |
+| ENG-002 | Rust modular-monolith structure and dependency boundaries | Completed | M0 |
+| ENG-003 | Typed Tauri command/event contracts | Completed | M0 |
+| ENG-004 | SQLite connection and migration runner | Completed | M0 |
+| ENG-005 | Domain identifiers, `RelativePath`, and common errors | Completed | M0 |
+| ENG-006 | Structured logging and safe diagnostics | Completed | M0 |
+| ENG-007 | Windows/macOS Rust, frontend, build, and Markdown CI quality gates | Completed | M0 |
+| ENG-008 | Temporary library and SQLite test fixtures | Completed | M0 |
 
 ## Library
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| LIB-001 | Configure and initialize one library root | In Progress | M1 |
-| LIB-002 | Recursive scan with progress and cancellation | In Progress | M1 |
-| LIB-003 | Discover PDF books | In Progress | M1 |
-| LIB-004 | Discover image-folder books with natural page ordering | In Progress | M1 |
-| LIB-005 | Idempotent catalog upsert and reconciliation | In Progress | M1 |
-| LIB-006 | Detect changed and newly added books | In Progress | M1 |
-| LIB-007 | Mark unavailable/missing books without destructive deletion | In Progress | M1 |
-| LIB-008 | Extract core book metadata | In Progress | M1 |
-| LIB-009 | Generate rebuildable thumbnails | In Progress | M1 |
-| LIB-010 | Browse catalog as grid/list | In Progress | M1 |
-| LIB-011 | Manual rescan and projection repair | In Progress | M1 |
+| LIB-001 | Configure and initialize one library root | Completed | M1 |
+| LIB-002 | Recursive scan with progress and cancellation | Completed | M1 |
+| LIB-003 | Discover PDF books | Completed | M1 |
+| LIB-004 | Discover image-folder books with natural page ordering | Completed | M1 |
+| LIB-005 | Idempotent catalog upsert and reconciliation | Completed | M1 |
+| LIB-006 | Detect changed and newly added books | Completed | M1 |
+| LIB-007 | Mark unavailable/missing books without destructive deletion | Completed | M1 |
+| LIB-008 | Extract core book metadata | Completed | M1 |
+| LIB-009 | Generate rebuildable thumbnails | Completed | M1 |
+| LIB-010 | Browse catalog as grid/list | Completed | M1 |
+| LIB-011 | Manual rescan and projection repair | Completed | M1 |
 | LIB-012 | Favorite books | Deferred | Post-MVP |
 | LIB-013 | Multiple libraries | Deferred | Post-MVP |
-| LIB-014 | Realtime catalog filtering by title, path, kind, and status | In Progress | M2 |
-| LIB-015 | Edit app-local book display title without changing source files | In Progress | M2 |
-| LIB-016 | Open nearest existing authorized folder for a missing book | In Progress | M4 |
-| LIB-017 | Explicitly relink a missing source inside the configured library | In Progress | M4 |
-| LIB-018 | Book Detail with reading status, book tags, linked Markdown notes, and explicit cover retry | In Progress | M4 |
+| LIB-014 | Realtime catalog filtering by title, path, kind, and status | Completed | M2 |
+| LIB-015 | Edit app-local book display title without changing source files | Completed | M2 |
+| LIB-016 | Open nearest existing authorized folder for a missing book | Completed | M4 |
+| LIB-017 | Explicitly relink a missing source inside the configured library | Completed | M4 |
+| LIB-018 | Book Detail with reading status, book tags, linked Markdown notes, and explicit cover retry | Completed | M4 |
 
 ## Reader and reading state
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| READ-001 | Open a book's source location in the OS file manager | In Progress | M2 |
+| READ-001 | Open a book's source location in the OS file manager | Completed | M2 |
 | READ-002 | Open and render PDF books through PDFium adapter | Deferred | Post-MVP |
 | READ-003 | Open image-folder books in an embedded reader | Deferred | Post-MVP |
 | READ-004 | Next/previous page and direct page navigation | Deferred | Post-MVP |
@@ -81,7 +82,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 | READ-006 | Zoom, fit width, fit height, and rotation | Deferred | Post-MVP |
 | READ-007 | Lazy loading and bounded page cache | Deferred | Post-MVP |
 | READ-008 | Fullscreen and keyboard shortcuts | Deferred | Post-MVP |
-| READ-009 | User-readable source-location availability errors | In Progress | M2 |
+| READ-009 | User-readable source-location availability errors | Completed | M2 |
 | PROG-001 | Debounced automatic progress save | Deferred | Post-MVP |
 | PROG-002 | Resume from last reading location | Deferred | Post-MVP |
 | PROG-003 | Recent books | Deferred | Post-MVP |
@@ -94,27 +95,27 @@ Design documents alone never justify `In Progress` or `Completed`.
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| NOTE-001 | Configure notes root | In Progress | M3 |
-| NOTE-002 | Create and conservatively edit Markdown notes | In Progress | M3 |
-| NOTE-003 | Associate notes with books | In Progress | M3 |
-| NOTE-004 | Parse headings, tags, links, and YAML frontmatter | In Progress | M3 |
-| NOTE-005 | Rebuildable SQLite note projection | In Progress | M3 |
-| NOTE-006 | Open note/folder in external editor or Obsidian | In Progress | M3 |
-| NOTE-007 | Basic backlinks | In Progress | M3 |
-| NOTE-008 | Reconcile externally edited notes | In Progress | M3 |
+| NOTE-001 | Configure notes root | Completed | M3 |
+| NOTE-002 | Create and conservatively edit Markdown notes | Completed | M3 |
+| NOTE-003 | Associate notes with books | Completed | M3 |
+| NOTE-004 | Parse headings, tags, links, and YAML frontmatter | Completed | M3 |
+| NOTE-005 | Rebuildable SQLite note projection | Completed | M3 |
+| NOTE-006 | Open note/folder in external editor or Obsidian | Completed | M3 |
+| NOTE-007 | Basic backlinks | Completed | M3 |
+| NOTE-008 | Reconcile externally edited notes | Completed | M3 |
 | NOTE-009 | Graph view | Deferred | Post-MVP |
 
 ## Search
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| SEARCH-001 | FTS5 schema and search-document projection | In Progress | M4 |
-| SEARCH-002 | Search books and bibliographic metadata | In Progress | M4 |
-| SEARCH-003 | Search notes | In Progress | M4 |
-| SEARCH-004 | Search tags | In Progress | M4 |
-| SEARCH-005 | Global search UI with result-type filters | In Progress | M4 |
-| SEARCH-006 | Incremental indexing after scans/note edits | In Progress | M4 |
-| SEARCH-007 | Reindex, repair, and failed-document diagnostics | In Progress | M4 |
+| SEARCH-001 | FTS5 schema and search-document projection | Completed | M4 |
+| SEARCH-002 | Search books and bibliographic metadata | Completed | M4 |
+| SEARCH-003 | Search notes | Completed | M4 |
+| SEARCH-004 | Search tags | Completed | M4 |
+| SEARCH-005 | Global search UI with result-type filters | Completed | M4 |
+| SEARCH-006 | Incremental indexing after scans/note edits | Completed | M4 |
+| SEARCH-007 | Reindex, repair, and failed-document diagnostics | Completed | M4 |
 | SEARCH-008 | Semantic/vector search | Deferred | Post-MVP |
 
 ## Reliability and release
@@ -134,18 +135,18 @@ Design documents alone never justify `In Progress` or `Completed`.
 
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
-| OCR-001 | OCR image pages | Planned | M6 |
-| OCR-002 | OCR scanned PDF pages | Planned | M6 |
-| DICT-001 | Offline Japanese dictionary lookup | Planned | M6 |
-| DICT-002 | Vietnamese meaning and Sino-Vietnamese reading | Planned | M6 |
-| DICT-003 | Kanji lookup | Planned | M6 |
+| OCR-001 | OCR image pages | In Progress | M6 |
+| OCR-002 | OCR scanned PDF pages | In Progress | M6 |
+| DICT-001 | Offline Japanese dictionary lookup | In Progress | M6 |
+| DICT-002 | Vietnamese meaning and Sino-Vietnamese reading | In Progress | M6 |
+| DICT-003 | Kanji lookup | In Progress | M6 |
 | DICT-004 | Pitch-accent data | Deferred | Post-MVP |
-| AI-001 | Provider abstraction and secure configuration | Planned | M6 |
-| AI-002 | Explain and translate selected content | Planned | M6 |
-| AI-003 | Summary and note-draft suggestions | Planned | M6 |
-| AI-004 | Flashcard drafting with explicit user acceptance | Planned | M6 |
-| ANKI-001 | Anki-compatible export | Planned | M6 |
-| PLUGIN-001 | Trusted in-process module manifest proof of concept | Planned | M6 |
+| AI-001 | Provider abstraction and secure configuration | In Progress | M6 |
+| AI-002 | Explain and translate selected content | In Progress | M6 |
+| AI-003 | Summary and note-draft suggestions | In Progress | M6 |
+| AI-004 | Flashcard drafting with explicit user acceptance | In Progress | M6 |
+| ANKI-001 | Anki-compatible export | In Progress | M6 |
+| PLUGIN-001 | Trusted in-process module manifest proof of concept | In Progress | M6 |
 | PLUGIN-002 | Untrusted plugin sandbox/marketplace | Deferred | Post-MVP |
 
 ## Explicit non-goals for the committed roadmap

@@ -10,6 +10,7 @@ mod operation;
 mod search;
 mod source_location;
 mod status;
+mod study;
 
 pub(crate) use book_detail::{
     BookDetailError, BookDetailRecord, BookDetailRepository, BookThumbnailTarget, ForceBookCover,
@@ -41,4 +42,10 @@ pub(crate) use source_location::{
 };
 pub(crate) use status::{
     ApplicationError, DatabaseHealth, GetApplicationStatus, LibraryConfiguration,
+};
+pub(crate) use study::{
+    AiDraft, BookPageSource, DictionaryEntry, DictionaryImportSummary, DictionaryLookup,
+    JapaneseToken, LearningDraft, LearningExporter, OcrBlock, OcrPageRecord, OcrProvider,
+    OcrRecognition, PageMaterializer, StudyAssistant, StudyError, StudyModule, StudyRepository,
+    StudyWorkspace, TrustedModule, normalize_japanese_ocr_text,
 };

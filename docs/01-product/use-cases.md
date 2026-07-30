@@ -25,7 +25,11 @@ Feature IDs, status, and milestone assignment are authoritative in the [feature 
 | Use notes externally | `NOTE-006` | Open notes or their folder in Obsidian or a normal editor without conversion. | [`05-notes/obsidian.md`](../05-notes/obsidian.md) |
 | Navigate note relationships | `NOTE-007`, `NOTE-008` | View backlinks and reconcile changes made by external editors. | [`05-notes/`](../05-notes/) |
 | Search local knowledge | `SEARCH-001`–`SEARCH-007` | Search rebuildable projections of books, notes, tags, and supported extracted text. | [`06-search/`](../06-search/) |
-| Run optional intelligence | `OCR-*`, `DICT-*`, `AI-*`, `ANKI-*`, `PLUGIN-*` | Use explicitly enabled optional capabilities without making them core dependencies. | [`07-ai/`](../07-ai/) |
+| Look up Japanese text offline | `DICT-001`–`DICT-003` | Enter or select Japanese text and inspect normalized readings, meanings, and Kanji metadata without a network connection. | [`07-ai/dictionary.md`](../07-ai/dictionary.md) |
+| OCR one selected page | `OCR-001`, `OCR-002` | Explicitly recognize one PDF/image page as rebuildable derived text with progress, cancellation, and per-page errors. | [`07-ai/ocr.md`](../07-ai/ocr.md) |
+| Turn reading context into a learning draft | `DICT-001`–`DICT-003`, `ANKI-001` | Review OCR/dictionary context and create an editable note or flashcard draft with portable source provenance. | [`07-ai/anki.md`](../07-ai/anki.md) |
+| Request optional AI assistance | `AI-001`–`AI-004` | Preview explicit context and request an explanation, translation, summary, or card draft from a configured provider. | [`07-ai/ai-assistant.md`](../07-ai/ai-assistant.md) |
+| Run a trusted optional module | `PLUGIN-001` | Enable a compatible trusted module without making the core depend on it. | [Feature catalog](feature-catalog.md) |
 
 ## Shared workflow rules
 

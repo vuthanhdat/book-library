@@ -29,7 +29,8 @@ html[data-theme="light"] .bg-stone-950 {
 }
 
 html[data-theme="light"] .bg-stone-950\/95,
-html[data-theme="light"] .bg-stone-950\/90 {
+html[data-theme="light"] .bg-stone-950\/90,
+html[data-theme="light"] .bg-stone-950\/70 {
   background-color: rgb(250 250 249 / 0.95);
 }
 

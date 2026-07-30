@@ -11,19 +11,22 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     application::{
-        ApplicationError, BookDetailError, BookDetailRecord, BookMetadataError,
-        BookRelocationError, CancellationToken, ConfigureLibrary, ForceBookCover,
-        GetApplicationStatus, GetBookDetail, LibraryError, LibraryRepository, NoteDetail,
-        NoteListItem, NotesError, NotesRefreshSummary, NotesRepository, NotesWorkspace,
-        OpenBookLocation, ReconcileCatalog, RelinkMissingBook, RepairBookCovers, ScanProgress,
-        ScanReason, SearchDiagnostics, SearchError, SearchLibrary, SearchRebuildSummary,
-        SearchRepository, SearchResultItem, SourceLocationError, ThumbnailProgressStage,
-        UpdateBookDetail, UpdateBookDisplayTitle,
+        AiDraft, ApplicationError, BookDetailError, BookDetailRecord, BookMetadataError,
+        BookRelocationError, CancellationToken, ConfigureLibrary, DictionaryEntry,
+        DictionaryImportSummary, DictionaryLookup, ForceBookCover, GetApplicationStatus,
+        GetBookDetail, JapaneseToken, LearningDraft, LibraryError, LibraryRepository, NoteDetail,
+        NoteListItem, NotesError, NotesRefreshSummary, NotesRepository, NotesWorkspace, OcrBlock,
+        OcrPageRecord, OpenBookLocation, ReconcileCatalog, RelinkMissingBook, RepairBookCovers,
+        ScanProgress, ScanReason, SearchDiagnostics, SearchError, SearchLibrary,
+        SearchRebuildSummary, SearchRepository, SearchResultItem, SourceLocationError, StudyError,
+        StudyModule, StudyWorkspace, ThumbnailProgressStage, TrustedModule, UpdateBookDetail,
+        UpdateBookDisplayTitle,
     },
     domain::{BookId, NoteId},
     infrastructure::{
-        FilesystemScanner, LoggingGuard, MarkdownNotesStore, SqliteDatabase, SystemFileManager,
-        ThumbnailService, initialize_logging,
+        BuiltinStudyAssistant, FilesystemScanner, LoggingGuard, MarkdownNotesStore, SqliteDatabase,
+        SystemFileManager, TesseractOcrProvider, ThumbnailService, TsvLearningExporter,
+        initialize_logging,
     },
 };
 
@@ -33,7 +36,32 @@ struct BackendState {
     thumbnails: Arc<ThumbnailService>,
     file_manager: Arc<SystemFileManager>,
     markdown_notes: Arc<MarkdownNotesStore>,
+    ocr: Arc<TesseractOcrProvider>,
+    learning_exporter: Arc<TsvLearningExporter>,
+    study_assistant: Arc<BuiltinStudyAssistant>,
+    active_ocr: Arc<Mutex<Option<CancellationToken>>>,
     active_scan: Arc<Mutex<Option<CancellationToken>>>,
+}
+
+impl BackendState {
+    fn study(
+        &self,
+    ) -> StudyWorkspace<
+        '_,
+        SqliteDatabase,
+        ThumbnailService,
+        TesseractOcrProvider,
+        TsvLearningExporter,
+        BuiltinStudyAssistant,
+    > {
+        StudyWorkspace::new(
+            self.database.as_ref(),
+            self.thumbnails.as_ref(),
+            self.ocr.as_ref(),
+            self.learning_exporter.as_ref(),
+            self.study_assistant.as_ref(),
+        )
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -207,6 +235,127 @@ struct SearchDiagnosticsResponse {
     documents: u64,
     failed_jobs: u64,
     last_rebuild_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StudyModuleResponse {
+    id: String,
+    enabled: bool,
+    available: bool,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DictionaryEntryResponse {
+    id: String,
+    expression: String,
+    reading: String,
+    part_of_speech: String,
+    meaning_vi: String,
+    han_viet: Option<String>,
+    package_name: String,
+    package_version: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JapaneseTokenResponse {
+    surface: String,
+    start: u32,
+    end: u32,
+    entries: Vec<DictionaryEntryResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DictionaryLookupResponse {
+    query: String,
+    entries: Vec<DictionaryEntryResponse>,
+    tokens: Vec<JapaneseTokenResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DictionaryImportResponse {
+    package_id: String,
+    imported: u64,
+    skipped: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OcrBlockResponse {
+    block_index: u32,
+    text: String,
+    confidence: f32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OcrPageResponse {
+    id: String,
+    book_id: String,
+    book_title: String,
+    page_index: u32,
+    text: String,
+    confidence: f32,
+    provider_id: String,
+    provider_version: String,
+    blocks: Vec<OcrBlockResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningDraftResponse {
+    id: String,
+    source_kind: String,
+    source_id: String,
+    book_relative_path: Option<String>,
+    page_index: Option<u32>,
+    front: String,
+    back: String,
+    tags: Vec<String>,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiDraftResponse {
+    id: String,
+    kind: String,
+    context: String,
+    content: String,
+    accepted: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedModuleResponse {
+    id: String,
+    version: String,
+    capabilities: Vec<String>,
+    permissions: Vec<String>,
+    compatible: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnkiExportResponse {
+    exported: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OcrProgressResponse {
+    book_id: String,
+    page_index: u32,
+    stage: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -458,6 +607,53 @@ impl From<SearchError> for DesktopError {
     }
 }
 
+impl From<StudyError> for DesktopError {
+    fn from(error: StudyError) -> Self {
+        match error {
+            StudyError::ModuleDisabled => Self {
+                code: "study_module_disabled",
+                message: "Enable this optional study module before using it.",
+            },
+            StudyError::ModuleUnavailable => Self {
+                code: "study_module_unavailable",
+                message: "The optional local runtime is not available on this computer.",
+            },
+            StudyError::InvalidInput => Self {
+                code: "study_input_invalid",
+                message: "Check the study text, page, tags, or export destination.",
+            },
+            StudyError::DictionaryPackageInvalid => Self {
+                code: "dictionary_package_invalid",
+                message: "The selected dictionary is not a complete supported Yomitan ZIP or valid TSV package.",
+            },
+            StudyError::SourceUnavailable => Self {
+                code: "study_source_unavailable",
+                message: "The selected book page is currently unavailable.",
+            },
+            StudyError::OcrFailed => Self {
+                code: "ocr_failed",
+                message: "The selected page could not be recognized by the local OCR provider.",
+            },
+            StudyError::Cancelled => Self {
+                code: "ocr_cancelled",
+                message: "The page OCR job was cancelled.",
+            },
+            StudyError::RepositoryFailed => Self {
+                code: "study_data_failed",
+                message: "The local study data could not be read or saved.",
+            },
+            StudyError::ExportFailed => Self {
+                code: "anki_export_failed",
+                message: "The TSV export could not be created. Choose a new destination.",
+            },
+            StudyError::DraftNotFound => Self {
+                code: "learning_draft_not_found",
+                message: "The selected learning draft no longer exists.",
+            },
+        }
+    }
+}
+
 impl From<BookRelocationError> for DesktopError {
     fn from(error: BookRelocationError) -> Self {
         match error {
@@ -514,6 +710,125 @@ fn search_diagnostics_response(diagnostics: SearchDiagnostics) -> SearchDiagnost
         documents: diagnostics.documents,
         failed_jobs: diagnostics.failed_jobs,
         last_rebuild_at: diagnostics.last_rebuild_at,
+    }
+}
+
+fn study_module_response(module: StudyModule) -> StudyModuleResponse {
+    StudyModuleResponse {
+        id: module.id,
+        enabled: module.enabled,
+        available: module.available,
+        status: module.status,
+    }
+}
+
+fn dictionary_entry_response(entry: DictionaryEntry) -> DictionaryEntryResponse {
+    DictionaryEntryResponse {
+        id: entry.id,
+        expression: entry.expression,
+        reading: entry.reading,
+        part_of_speech: entry.part_of_speech,
+        meaning_vi: entry.meaning_vi,
+        han_viet: entry.han_viet,
+        package_name: entry.package_name,
+        package_version: entry.package_version,
+    }
+}
+
+fn japanese_token_response(token: JapaneseToken) -> JapaneseTokenResponse {
+    JapaneseTokenResponse {
+        surface: token.surface,
+        start: token.start,
+        end: token.end,
+        entries: token
+            .entries
+            .into_iter()
+            .map(dictionary_entry_response)
+            .collect(),
+    }
+}
+
+fn dictionary_lookup_response(lookup: DictionaryLookup) -> DictionaryLookupResponse {
+    DictionaryLookupResponse {
+        query: lookup.query,
+        entries: lookup
+            .entries
+            .into_iter()
+            .map(dictionary_entry_response)
+            .collect(),
+        tokens: lookup
+            .tokens
+            .into_iter()
+            .map(japanese_token_response)
+            .collect(),
+    }
+}
+
+fn dictionary_import_response(summary: DictionaryImportSummary) -> DictionaryImportResponse {
+    DictionaryImportResponse {
+        package_id: summary.package_id,
+        imported: summary.imported,
+        skipped: summary.skipped,
+    }
+}
+
+fn ocr_block_response(block: OcrBlock) -> OcrBlockResponse {
+    OcrBlockResponse {
+        block_index: block.block_index,
+        text: block.text,
+        confidence: block.confidence,
+        x: block.x,
+        y: block.y,
+        width: block.width,
+        height: block.height,
+    }
+}
+
+fn ocr_page_response(page: OcrPageRecord) -> OcrPageResponse {
+    OcrPageResponse {
+        id: page.id,
+        book_id: page.book_id,
+        book_title: page.book_title,
+        page_index: page.page_index,
+        text: page.text,
+        confidence: page.confidence,
+        provider_id: page.provider_id,
+        provider_version: page.provider_version,
+        blocks: page.blocks.into_iter().map(ocr_block_response).collect(),
+    }
+}
+
+fn learning_draft_response(draft: LearningDraft) -> LearningDraftResponse {
+    LearningDraftResponse {
+        id: draft.id,
+        source_kind: draft.source_kind,
+        source_id: draft.source_id,
+        book_relative_path: draft.book_relative_path,
+        page_index: draft.page_index,
+        front: draft.front,
+        back: draft.back,
+        tags: draft.tags,
+        status: draft.status,
+    }
+}
+
+fn ai_draft_response(draft: AiDraft) -> AiDraftResponse {
+    AiDraftResponse {
+        id: draft.id,
+        kind: draft.kind,
+        context: draft.context,
+        content: draft.content,
+        accepted: draft.accepted,
+    }
+}
+
+fn trusted_module_response(module: TrustedModule) -> TrustedModuleResponse {
+    TrustedModuleResponse {
+        id: module.id,
+        version: module.version,
+        capabilities: module.capabilities,
+        permissions: module.permissions,
+        compatible: module.compatible,
     }
 }
 
@@ -1149,6 +1464,261 @@ fn get_search_diagnostics(
         .map_err(DesktopError::from)
 }
 
+#[tauri::command]
+fn get_study_modules(
+    backend: State<'_, BackendState>,
+) -> Result<Vec<StudyModuleResponse>, DesktopError> {
+    backend
+        .study()
+        .modules()
+        .map(|modules| modules.into_iter().map(study_module_response).collect())
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn set_study_module_enabled(
+    module_id: String,
+    enabled: bool,
+    backend: State<'_, BackendState>,
+) -> Result<Vec<StudyModuleResponse>, DesktopError> {
+    backend
+        .study()
+        .set_module_enabled(&module_id, enabled)
+        .map(|modules| modules.into_iter().map(study_module_response).collect())
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn lookup_japanese(
+    query: String,
+    save_history: bool,
+    backend: State<'_, BackendState>,
+) -> Result<DictionaryLookupResponse, DesktopError> {
+    backend
+        .study()
+        .lookup(&query, save_history)
+        .map(dictionary_lookup_response)
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn import_dictionary_package(
+    selected_path: String,
+    name: Option<String>,
+    version: Option<String>,
+    license_id: String,
+    backend: State<'_, BackendState>,
+) -> Result<DictionaryImportResponse, DesktopError> {
+    backend
+        .study()
+        .import_dictionary_package(
+            PathBuf::from(selected_path).as_path(),
+            name.as_deref(),
+            version.as_deref(),
+            &license_id,
+        )
+        .map(dictionary_import_response)
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn clear_dictionary_history(backend: State<'_, BackendState>) -> Result<(), DesktopError> {
+    backend
+        .study()
+        .clear_lookup_history()
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn run_page_ocr(
+    book_id: String,
+    page_index: u32,
+    app: AppHandle,
+    backend: State<'_, BackendState>,
+) -> Result<OcrPageResponse, DesktopError> {
+    let book_id =
+        BookId::parse(&book_id).map_err(|_| DesktopError::from(StudyError::InvalidInput))?;
+    let cancellation = CancellationToken::default();
+    {
+        let mut active = backend
+            .active_ocr
+            .lock()
+            .map_err(|_| DesktopError::from(StudyError::RepositoryFailed))?;
+        if active.is_some() {
+            return Err(DesktopError::from(StudyError::InvalidInput));
+        }
+        *active = Some(cancellation.clone());
+    }
+    let emit = |stage| {
+        let _ = app.emit(
+            "study_ocr_progressed",
+            OcrProgressResponse {
+                book_id: book_id.to_string(),
+                page_index,
+                stage,
+            },
+        );
+    };
+    emit("started");
+    let result = backend.study().ocr_page(book_id, page_index, &cancellation);
+    if let Ok(mut active) = backend.active_ocr.lock() {
+        *active = None;
+    }
+    match result {
+        Ok(page) => {
+            emit("completed");
+            queue_search_refresh(&backend);
+            Ok(ocr_page_response(page))
+        }
+        Err(StudyError::Cancelled) => {
+            emit("cancelled");
+            Err(DesktopError::from(StudyError::Cancelled))
+        }
+        Err(error) => {
+            emit("failed");
+            Err(DesktopError::from(error))
+        }
+    }
+}
+
+#[tauri::command]
+fn cancel_page_ocr(backend: State<'_, BackendState>) -> Result<bool, DesktopError> {
+    let active = backend
+        .active_ocr
+        .lock()
+        .map_err(|_| DesktopError::from(StudyError::RepositoryFailed))?;
+    if let Some(cancellation) = active.as_ref() {
+        cancellation.cancel();
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn list_ocr_pages(
+    book_id: Option<String>,
+    backend: State<'_, BackendState>,
+) -> Result<Vec<OcrPageResponse>, DesktopError> {
+    let book_id = book_id
+        .as_deref()
+        .map(BookId::parse)
+        .transpose()
+        .map_err(|_| DesktopError::from(StudyError::InvalidInput))?;
+    backend
+        .study()
+        .list_ocr_pages(book_id)
+        .map(|pages| pages.into_iter().map(ocr_page_response).collect())
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn trim_ocr_page(
+    page_id: String,
+    backend: State<'_, BackendState>,
+) -> Result<OcrPageResponse, DesktopError> {
+    let page = backend
+        .study()
+        .trim_ocr_page(&page_id)
+        .map_err(DesktopError::from)?;
+    queue_search_refresh(&backend);
+    Ok(ocr_page_response(page))
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn create_learning_draft(
+    source_kind: String,
+    source_id: String,
+    book_relative_path: Option<String>,
+    page_index: Option<u32>,
+    front: String,
+    back: String,
+    tags: Vec<String>,
+    backend: State<'_, BackendState>,
+) -> Result<LearningDraftResponse, DesktopError> {
+    backend
+        .study()
+        .create_learning_draft(
+            &source_kind,
+            &source_id,
+            book_relative_path.as_deref(),
+            page_index,
+            &front,
+            &back,
+            &tags,
+        )
+        .map(learning_draft_response)
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn list_learning_drafts(
+    backend: State<'_, BackendState>,
+) -> Result<Vec<LearningDraftResponse>, DesktopError> {
+    backend
+        .study()
+        .list_learning_drafts()
+        .map(|drafts| drafts.into_iter().map(learning_draft_response).collect())
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn approve_learning_draft(
+    draft_id: String,
+    backend: State<'_, BackendState>,
+) -> Result<LearningDraftResponse, DesktopError> {
+    backend
+        .study()
+        .approve_learning_draft(&draft_id)
+        .map(learning_draft_response)
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn export_anki_tsv(
+    selected_path: String,
+    backend: State<'_, BackendState>,
+) -> Result<AnkiExportResponse, DesktopError> {
+    backend
+        .study()
+        .export_approved(PathBuf::from(selected_path).as_path())
+        .map(|exported| AnkiExportResponse { exported })
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn generate_ai_draft(
+    kind: String,
+    context: String,
+    backend: State<'_, BackendState>,
+) -> Result<AiDraftResponse, DesktopError> {
+    backend
+        .study()
+        .assist(&kind, &context)
+        .map(ai_draft_response)
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn list_ai_drafts(backend: State<'_, BackendState>) -> Result<Vec<AiDraftResponse>, DesktopError> {
+    backend
+        .study()
+        .list_ai_drafts()
+        .map(|drafts| drafts.into_iter().map(ai_draft_response).collect())
+        .map_err(DesktopError::from)
+}
+
+#[tauri::command]
+fn list_trusted_modules(backend: State<'_, BackendState>) -> Vec<TrustedModuleResponse> {
+    backend
+        .study()
+        .trusted_modules()
+        .into_iter()
+        .map(trusted_module_response)
+        .collect()
+}
+
 pub(crate) fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -1176,6 +1746,10 @@ pub(crate) fn run() {
                 )),
                 file_manager: Arc::new(SystemFileManager::new()),
                 markdown_notes: Arc::new(MarkdownNotesStore::new()),
+                ocr: Arc::new(TesseractOcrProvider::discover()),
+                learning_exporter: Arc::new(TsvLearningExporter::new()),
+                study_assistant: Arc::new(BuiltinStudyAssistant::new()),
+                active_ocr: Arc::new(Mutex::new(None)),
                 active_scan: Arc::new(Mutex::new(None)),
             };
             tracing::info!(
@@ -1215,7 +1789,23 @@ pub(crate) fn run() {
             open_notes_root,
             search_library,
             rebuild_search_index,
-            get_search_diagnostics
+            get_search_diagnostics,
+            get_study_modules,
+            set_study_module_enabled,
+            lookup_japanese,
+            import_dictionary_package,
+            clear_dictionary_history,
+            run_page_ocr,
+            cancel_page_ocr,
+            list_ocr_pages,
+            trim_ocr_page,
+            create_learning_draft,
+            list_learning_drafts,
+            approve_learning_draft,
+            export_anki_tsv,
+            generate_ai_draft,
+            list_ai_drafts,
+            list_trusted_modules
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Book Library");
