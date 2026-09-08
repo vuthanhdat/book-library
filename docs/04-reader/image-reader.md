@@ -6,7 +6,7 @@ Define the image-folder reader for manga, scanned documents, and folders of orde
 
 **In Progress under ADR-016.** M6 adds bounded single-page rendering, page
 navigation, presentation zoom, and adjacent OCR/dictionary study tools. External
-opening remains available. Continuous mode, durable progress, bookmarks,
+opening and fullscreen remain available. Continuous mode, durable progress, bookmarks,
 rotation, and advanced caching remain deferred.
 
 # Background

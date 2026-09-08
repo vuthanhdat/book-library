@@ -110,6 +110,7 @@ pub(crate) struct RenderedStudyPage {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) media_type: String,
+    pub(crate) selectable_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,6 +123,7 @@ pub(crate) struct StudyReaderPage {
     pub(crate) height: u32,
     pub(crate) media_type: String,
     pub(crate) bytes: Vec<u8>,
+    pub(crate) selectable_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -412,6 +414,7 @@ where
             height: rendered.height,
             media_type: rendered.media_type,
             bytes: rendered.bytes,
+            selectable_text: rendered.selectable_text,
         })
     }
 

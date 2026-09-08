@@ -320,6 +320,7 @@ struct StudyReaderPageResponse {
     width: u32,
     height: u32,
     image_data_url: String,
+    selectable_text: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -823,6 +824,7 @@ fn study_reader_page_response(page: StudyReaderPage) -> StudyReaderPageResponse 
             page.media_type,
             STANDARD.encode(page.bytes)
         ),
+        selectable_text: page.selectable_text,
     }
 }
 

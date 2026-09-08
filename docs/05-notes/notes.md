@@ -27,6 +27,17 @@ Notes are central to transforming a reader into a knowledge platform. They must 
 
 The notes module should use Markdown files as source content and SQLite as a projection. The application layer creates note paths according to policy. The Markdown adapter reads, writes, and parses notes. Search indexing consumes parsed note text.
 
+The in-app editor is BlockNote in the React presentation layer. It edits the
+Markdown body through BlockNote's CommonMark/GFM conversion, while YAML
+frontmatter is kept outside the editor and reattached on explicit save. BlockNote
+is therefore a UI editor, not a new canonical note format. See
+[ADR-017](../adr/ADR-017-blocknote-markdown-editor.md).
+
+BlockNote conversion is lossy for Markdown constructs outside its supported
+subset. Users are warned before saving that body formatting may be normalized;
+frontmatter remains preserved. External editors can still read and edit the
+resulting `.md` files.
+
 # Mermaid Diagram
 
 ```mermaid

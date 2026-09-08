@@ -3648,6 +3648,67 @@ mod tests {
     }
 
     #[test]
+    fn book_notes_are_linked_from_frontmatter_and_returned_by_book_detail() {
+        let app_data = TempDir::new().unwrap();
+        let library = TempDir::new().unwrap();
+        let notes_root = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let configuration = database
+            .save_configuration(library.path(), "Library")
+            .unwrap();
+        let relative_path = RelativePath::new("Shelf/Book.pdf").unwrap();
+        let discovered = DiscoveredBook {
+            kind: BookKind::PdfFile,
+            status: BookStatus::Available,
+            path_key: if cfg!(target_os = "windows") {
+                relative_path.as_str().to_lowercase()
+            } else {
+                relative_path.as_str().to_owned()
+            },
+            title: "Book".to_owned(),
+            fingerprint: ContentFingerprint::new("pdf:book").unwrap(),
+            relative_path: relative_path.clone(),
+            size_bytes: Some(1),
+            modified_at_ms: Some(1),
+            page_count: Some(1),
+            image_pages: Vec::new(),
+        };
+        let job = database
+            .start_scan(configuration.id, ScanReason::Initial)
+            .unwrap();
+        database
+            .reconcile(
+                configuration.id,
+                &job,
+                &ScanResult {
+                    books: vec![discovered],
+                    issues: Vec::new(),
+                    cancelled: false,
+                },
+            )
+            .unwrap();
+        let book_id = BookId::parse(&database.list_books().unwrap()[0].id).unwrap();
+
+        let markdown = MarkdownNotesStore::new();
+        let opener = NoopExternalOpener;
+        let workspace = NotesWorkspace::new(&database, &markdown, &opener);
+        workspace.configure(notes_root.path()).unwrap();
+        let note = workspace.create("Book note", Some(book_id)).unwrap();
+
+        assert_eq!(note.book_id, Some(book_id.to_string()));
+        assert_eq!(note.book_title.as_deref(), Some("Book"));
+        assert!(
+            fs::read_to_string(notes_root.path().join(&note.relative_path))
+                .unwrap()
+                .contains("book_relative_path: \"Shelf/Book.pdf\"")
+        );
+        let detail = database.book_detail(book_id).unwrap().unwrap();
+        assert_eq!(detail.notes.len(), 1);
+        assert_eq!(detail.notes[0].id, note.id);
+        assert_eq!(detail.notes[0].title, "Book note");
+    }
+
+    #[test]
     #[ignore = "requires BOOK_LIBRARY_SMOKE_ROOT and a real read-only library"]
     fn real_library_scan_is_idempotent_and_non_destructive() {
         let root = PathBuf::from(

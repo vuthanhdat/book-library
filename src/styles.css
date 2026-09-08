@@ -154,6 +154,35 @@ button {
   color: rgb(252 211 77);
 }
 
+.book-note-editor {
+  min-height: 480px;
+}
+
+.book-note-editor .bn-container {
+  min-height: 480px;
+  max-width: none;
+  padding: 1.25rem 1.5rem 2rem;
+}
+
+.book-note-editor .bn-editor {
+  min-height: 420px;
+  max-width: none;
+  padding-bottom: 3rem;
+}
+
+.book-note-editor-fallback {
+  min-height: 480px;
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  padding: 1rem;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
 @media (max-width: 640px) {
   .book-grid {
     grid-template-columns: repeat(auto-fill, minmax(min(135px, 100%), 1fr));

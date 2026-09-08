@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { MarkdownBlockNoteEditor } from "./MarkdownBlockNoteEditor";
 import {
   useCallback,
   useDeferredValue,
@@ -229,6 +231,7 @@ export interface StudyReaderPage {
   width: number;
   height: number;
   imageDataUrl: string;
+  selectableText: string | null;
 }
 
 interface LearningDraft {
@@ -361,15 +364,20 @@ export function App() {
   const [readerPage, setReaderPage] = useState<StudyReaderPage | null>(null);
   const [readerBusy, setReaderBusy] = useState(false);
   const [readerError, setReaderError] = useState<DesktopError | null>(null);
+  const [readerFullscreen, setReaderFullscreen] = useState(false);
   const [learningDrafts, setLearningDrafts] = useState<LearningDraft[]>([]);
   const [aiKind, setAiKind] = useState("explain");
   const [aiContext, setAiContext] = useState("");
   const [aiDrafts, setAiDrafts] = useState<AiDraft[]>([]);
   const [trustedModules, setTrustedModules] = useState<TrustedModule[]>([]);
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const catalogBooks = useMemo(
+    () => filterVisibleCatalogBooks(books),
+    [books],
+  );
   const visibleBooks = useMemo(
-    () => filterCatalogBooks(books, deferredSearchQuery),
-    [books, deferredSearchQuery],
+    () => filterCatalogBooks(catalogBooks, deferredSearchQuery),
+    [catalogBooks, deferredSearchQuery],
   );
 
   useEffect(() => {
@@ -742,6 +750,19 @@ export function App() {
     try {
       const detail = await invoke<NoteDetail>("create_note", { title, bookId });
       await loadNotes();
+      setSelectedBookDetail((current) => {
+        if (
+          !current ||
+          detail.bookId !== current.id ||
+          current.notes.some((note) => note.id === detail.id)
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          notes: [...current.notes, { id: detail.id, title: detail.title }],
+        };
+      });
       setSelectedNote(detail);
       setNoteDraft(detail.body);
     } catch (error) {
@@ -759,6 +780,32 @@ export function App() {
       const detail = await invoke<NoteDetail>("save_note", {
         noteId: selectedNote.id,
         body: noteDraft,
+      });
+      setSelectedBookDetail((current) => {
+        if (!current) return current;
+        const linked = detail.bookId === current.id;
+        const hasNote = current.notes.some((note) => note.id === detail.id);
+        if (linked && !hasNote) {
+          return {
+            ...current,
+            notes: [...current.notes, { id: detail.id, title: detail.title }],
+          };
+        }
+        if (linked && hasNote) {
+          return {
+            ...current,
+            notes: current.notes.map((note) =>
+              note.id === detail.id ? { ...note, title: detail.title } : note,
+            ),
+          };
+        }
+        if (!linked && hasNote) {
+          return {
+            ...current,
+            notes: current.notes.filter((note) => note.id !== detail.id),
+          };
+        }
+        return current;
       });
       setSelectedNote(detail);
       setNoteDraft(detail.body);
@@ -951,6 +998,19 @@ export function App() {
     }
   };
 
+  const setStudyReaderFullscreen = async (fullscreen: boolean) => {
+    setReaderFullscreen(fullscreen);
+    try {
+      await getCurrentWindow().setFullscreen(fullscreen);
+    } catch {
+      setReaderError({
+        code: "reader_fullscreen_failed",
+        message:
+          "The reader changed layout, but the desktop window could not change fullscreen state.",
+      });
+    }
+  };
+
   const trimOcrPage = async (page: OcrPage) => {
     setStudyBusy(true);
     setStudyError(null);
@@ -1069,7 +1129,12 @@ export function App() {
 
   return (
     <main className="min-h-screen bg-stone-950 text-stone-100">
-      <div className="mx-auto min-h-screen max-w-[1920px]">
+      <div
+        className={`mx-auto min-h-screen ${
+          readerFullscreen ? "max-w-none" : "max-w-[1920px]"
+        }`}
+      >
+        {!readerFullscreen && (
         <header className="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 border-b border-stone-800 bg-stone-950/95 px-5 py-3 backdrop-blur md:flex-nowrap md:px-7 md:py-0">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-400">
             Book Library
@@ -1131,7 +1196,12 @@ export function App() {
             </div>
           )}
         </header>
-        <section className="min-w-0 px-5 py-7 md:px-7">
+        )}
+        <section
+          className={
+            readerFullscreen ? "min-w-0 p-0" : "min-w-0 px-5 py-7 md:px-7"
+          }
+        >
           <StartupPanel startup={startup} />
           {startup.kind === "healthy" && startup.status.platform.supported && (
             <>
@@ -1161,12 +1231,16 @@ export function App() {
                     ) ?? null
                   }
                   onBack={() => {
+                    void setStudyReaderFullscreen(false);
                     setReaderPage(null);
                     setReaderError(null);
                   }}
                   onCreateCard={(entry) => void createDictionaryDraft(entry)}
                   onDictionaryQueryChange={setDictionaryQuery}
                   onLookup={(query) => void lookupJapanese(query)}
+                  onFullscreenChange={(fullscreen) =>
+                    void setStudyReaderFullscreen(fullscreen)
+                  }
                   onNavigate={(pageIndex) => {
                     const book = books.find(
                       (item) => item.id === readerPage.bookId,
@@ -1181,6 +1255,7 @@ export function App() {
                   }}
                   onRunOcr={() => void runReaderOcr()}
                   page={readerPage}
+                  fullscreen={readerFullscreen}
                 />
               ) : activeSection === "Study" ? (
                 <StudyWorkspace
@@ -1258,6 +1333,7 @@ export function App() {
                   draft={noteDraft}
                   error={notesError}
                   notes={notes}
+                  theme={theme}
                   onChooseRoot={() => void chooseNotesRoot()}
                   onCreate={(title, bookId) => void createNote(title, bookId)}
                   onDraftChange={setNoteDraft}
@@ -1338,7 +1414,7 @@ export function App() {
                   searchQuery={searchQuery}
                   summary={scanSummary}
                   summaryKind={scanSummaryKind}
-                  totalBooks={books.length}
+                  totalBooks={catalogBooks.length}
                   view={view}
                 />
               )}
@@ -1367,11 +1443,13 @@ export function StudyReader({
   dictionaryLookup,
   dictionaryQuery,
   error,
+  fullscreen,
   ocrEnabled,
   ocrPage,
   onBack,
   onCreateCard,
   onDictionaryQueryChange,
+  onFullscreenChange,
   onLookup,
   onNavigate,
   onOpenFolder,
@@ -1384,11 +1462,13 @@ export function StudyReader({
   dictionaryLookup: DictionaryLookup | null;
   dictionaryQuery: string;
   error: DesktopError | null;
+  fullscreen: boolean;
   ocrEnabled: boolean;
   ocrPage: OcrPage | null;
   onBack: () => void;
   onCreateCard: (entry: DictionaryEntry) => void;
   onDictionaryQueryChange: (query: string) => void;
+  onFullscreenChange: (fullscreen: boolean) => void;
   onLookup: (query: string) => void;
   onNavigate: (pageIndex: number) => void;
   onOpenFolder: () => void;
@@ -1401,6 +1481,7 @@ export function StudyReader({
   const transcriptRef = useRef<HTMLDivElement>(null);
   const canGoBack = page.pageIndex > 0;
   const canGoForward = page.pageIndex + 1 < page.pageCount;
+  const selectablePageText = ocrPage?.text ?? page.selectableText;
 
   useEffect(() => {
     setPageDraft(page.pageIndex + 1);
@@ -1418,11 +1499,21 @@ export function StudyReader({
         onNavigate(page.pageIndex - 1);
       } else if (event.key === "ArrowRight" && canGoForward && !busy) {
         onNavigate(page.pageIndex + 1);
+      } else if (event.key === "Escape" && fullscreen) {
+        onFullscreenChange(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, canGoBack, canGoForward, onNavigate, page.pageIndex]);
+  }, [
+    busy,
+    canGoBack,
+    canGoForward,
+    fullscreen,
+    onFullscreenChange,
+    onNavigate,
+    page.pageIndex,
+  ]);
 
   const lookupSelection = () => {
     if (!dictionaryEnabled || busy || !transcriptRef.current) return;
@@ -1442,8 +1533,16 @@ export function StudyReader({
   };
 
   return (
-    <div className="reader-shell -mx-5 -my-7 md:-mx-7">
-      <header className="reader-toolbar sticky top-16 z-30 flex min-h-16 flex-wrap items-center gap-3 border-b border-stone-800 bg-stone-950/95 px-5 py-3 backdrop-blur md:px-7">
+    <div
+      className={`reader-shell ${
+        fullscreen ? "min-h-screen" : "-mx-5 -my-7 md:-mx-7"
+      }`}
+    >
+      <header
+        className={`reader-toolbar sticky z-30 flex min-h-16 flex-wrap items-center gap-3 border-b border-stone-800 bg-stone-950/95 px-5 py-3 backdrop-blur md:px-7 ${
+          fullscreen ? "top-0" : "top-16"
+        }`}
+      >
         <button
           className="rounded-lg border border-stone-700 px-3 py-2 text-sm hover:border-amber-500"
           onClick={onBack}
@@ -1481,6 +1580,14 @@ export function StudyReader({
           </button>
         </div>
         <button
+          aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          className="rounded-lg border border-stone-700 px-3 py-2 text-sm text-stone-300 hover:border-amber-500"
+          onClick={() => onFullscreenChange(!fullscreen)}
+          type="button"
+        >
+          {fullscreen ? "Exit fullscreen" : "Full screen"}
+        </button>
+        <button
           className="rounded-lg border border-stone-700 px-3 py-2 text-sm text-stone-300 hover:border-amber-500"
           onClick={onOpenFolder}
           type="button"
@@ -1503,7 +1610,11 @@ export function StudyReader({
       )}
 
       <div
-        className={`reader-layout grid min-h-[calc(100dvh-8rem)] ${
+        className={`reader-layout grid ${
+          fullscreen
+            ? "min-h-[calc(100dvh-7rem)]"
+            : "min-h-[calc(100dvh-8rem)]"
+        } ${
           dictionaryCollapsed
             ? "grid-cols-1"
             : "xl:grid-cols-[minmax(0,1fr)_clamp(360px,28vw,500px)]"
@@ -1528,7 +1639,13 @@ export function StudyReader({
         </section>
 
         {!dictionaryCollapsed && (
-          <aside className="reader-dictionary border-l border-stone-800 bg-stone-950 p-5 xl:sticky xl:top-32 xl:h-[calc(100dvh-8rem)] xl:overflow-auto">
+          <aside
+            className={`reader-dictionary border-l border-stone-800 bg-stone-950 p-5 xl:sticky xl:overflow-auto ${
+              fullscreen
+                ? "xl:top-16 xl:h-[calc(100dvh-7rem)]"
+                : "xl:top-32 xl:h-[calc(100dvh-8rem)]"
+            }`}
+          >
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-400">
@@ -1580,7 +1697,7 @@ export function StudyReader({
                     Select a word or phrase below for instant lookup.
                   </p>
                 </div>
-                {!ocrPage && (
+                {!selectablePageText && (
                   <button
                     className="shrink-0 rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-stone-950 disabled:opacity-40"
                     disabled={!ocrEnabled || busy}
@@ -1591,19 +1708,24 @@ export function StudyReader({
                   </button>
                 )}
               </div>
-              {ocrPage ? (
+              {selectablePageText ? (
                 <div
                   className="reader-transcript mt-3 max-h-64 select-text overflow-auto whitespace-pre-wrap rounded-lg border border-stone-700 bg-stone-900/70 p-4 text-base leading-8 text-stone-100"
                   onMouseUp={lookupSelection}
                   ref={transcriptRef}
                 >
-                  {ocrPage.text}
+                  {selectablePageText}
                 </div>
               ) : (
                 <p className="mt-3 rounded-lg border border-dashed border-stone-700 p-4 text-sm leading-6 text-stone-500">
                   {ocrEnabled
                     ? "This page has no saved OCR text yet."
                     : "Enable the local OCR module in Study to recognize this page."}
+                </p>
+              )}
+              {page.selectableText && !ocrPage && (
+                <p className="mt-2 text-xs text-emerald-400">
+                  Text extracted directly from this PDF page.
                 </p>
               )}
             </section>
@@ -2424,6 +2546,7 @@ export function NotesWorkspace({
   onSelect,
   selectedNote,
   summary,
+  theme = "dark",
 }: {
   books: Book[];
   busy: boolean;
@@ -2441,6 +2564,7 @@ export function NotesWorkspace({
   onSelect: (noteId: string) => void;
   selectedNote: NoteDetail | null;
   summary: NotesRefreshSummary | null;
+  theme?: Theme;
 }) {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -2598,13 +2722,21 @@ export function NotesWorkspace({
                 </button>
               </div>
             </div>
-            <textarea
-              aria-label="Markdown note"
-              className="mt-5 min-h-[480px] flex-1 resize-y rounded-xl border border-stone-700 bg-stone-950 p-4 font-mono text-sm leading-6 text-stone-200 outline-none focus:border-amber-500"
-              onChange={(event) => onDraftChange(event.target.value)}
-              spellCheck={false}
-              value={draft}
-            />
+            <div className="mt-5 min-h-[480px] flex-1 overflow-hidden rounded-xl border border-stone-700 bg-stone-950">
+              <MarkdownBlockNoteEditor
+                initialMarkdown={selectedNote.body}
+                noteId={selectedNote.id}
+                onChange={onDraftChange}
+                theme={theme}
+              />
+            </div>
+            <p className="mt-2 text-xs text-stone-600">
+              BlockNote editor · saved as portable Markdown
+            </p>
+            <p className="mt-1 text-xs text-stone-600">
+              YAML frontmatter is preserved; unsupported Markdown may be
+              normalized when you save.
+            </p>
             <div className="mt-5 border-t border-stone-800 pt-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
                 Backlinks
@@ -3510,6 +3642,10 @@ export function filterCatalogBooks(books: Book[], query: string): Book[] {
       .toLocaleLowerCase();
     return terms.every((term) => searchable.includes(term));
   });
+}
+
+export function filterVisibleCatalogBooks(books: Book[]): Book[] {
+  return books.filter((book) => book.status !== "missing");
 }
 
 export function filterBookChoices(books: Book[], query: string): Book[] {

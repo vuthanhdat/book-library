@@ -28,7 +28,9 @@ The Study Reader:
 - resolves and canonicalizes each requested page beneath the configured library
   root through application and infrastructure ports;
 - renders one page at a time to bounded app-data/cache output;
-- supports previous, next, direct page requests, and presentation-only zoom;
+- supports previous, next, direct page requests, presentation-only zoom, and
+  explicit desktop fullscreen;
+- extracts an existing PDF text layer for selection before offering OCR;
 - shows a persistent adjacent offline Japanese-to-Vietnamese dictionary;
 - reuses saved OCR text for the current page;
 - runs OCR only after an explicit `OCR this page` action;
@@ -80,6 +82,8 @@ sources implicitly, and create an unbounded background workload.
   the catalog.
 - Normal scanning and ordinary book opening never start OCR.
 - Keyboard navigation ignores focused text inputs and respects page bounds.
+- Desktop fullscreen uses the narrow Tauri window permission and exits through
+  the reader control or `Escape`.
 - Frontend tests cover the two-column layout, navigation controls, OCR action,
   and dictionary result area.
 

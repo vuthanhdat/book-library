@@ -5,9 +5,10 @@ Define the PDF reader module for rendering, navigating, bookmarking, and trackin
 ## Status
 
 **In Progress under ADR-016.** M6 adds bounded one-page PDFium rendering, page
-navigation, presentation zoom, and adjacent OCR/dictionary study tools. External
-opening remains available. Durable progress, bookmarks, annotations, native PDF
-text selection, rotation, and advanced caching remain deferred.
+navigation, presentation zoom, fullscreen, direct PDF text-layer extraction,
+and adjacent OCR/dictionary study tools. External opening remains available.
+Durable progress, bookmarks, annotations on the source PDF, rotation, and
+advanced caching remain deferred.
 
 # Background
 
@@ -69,7 +70,7 @@ PDF reader records:
 
 # Future Extension
 
-- Text selection and copy.
+- Coordinate-aligned selection directly over the rendered page.
 - Highlight annotations stored separately from the PDF.
 - Page text extraction for indexing.
 - Password prompt and secure temporary session handling.

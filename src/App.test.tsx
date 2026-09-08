@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
+  mergeMarkdownFrontmatter,
+  splitMarkdownFrontmatter,
+} from "./MarkdownBlockNoteEditor";
+import {
   App,
   BookDetailPage,
   GlobalSearchWorkspace,
@@ -10,6 +14,7 @@ import {
   StartupPanel,
   filterBookChoices,
   filterCatalogBooks,
+  filterVisibleCatalogBooks,
   isValidBookDisplayTitle,
   parseBookTags,
   normalizeLookupSelection,
@@ -47,6 +52,25 @@ const books: Book[] = [
 ];
 
 describe("App", () => {
+  it("keeps Markdown frontmatter opaque to the BlockNote editor", () => {
+    const markdown =
+      "---\r\nbook_relative_path: \"Shelf/Book.pdf\"\r\ncustom: keep-me\r\n---\r\n\r\n# Note\r\n";
+
+    expect(splitMarkdownFrontmatter(markdown)).toEqual({
+      frontmatter:
+        "---\r\nbook_relative_path: \"Shelf/Book.pdf\"\r\ncustom: keep-me\r\n---",
+      body: "# Note\r\n",
+    });
+    expect(
+      mergeMarkdownFrontmatter(
+        splitMarkdownFrontmatter(markdown).frontmatter,
+        "# Note\r\n\r\nUpdated",
+      ),
+    ).toBe(
+      "---\r\nbook_relative_path: \"Shelf/Book.pdf\"\r\ncustom: keep-me\r\n---\r\n\r\n# Note\r\n\r\nUpdated\r\n",
+    );
+  });
+
   it("renders startup loading and navigation without a fake catalog", () => {
     const markup = renderToStaticMarkup(<App />);
 
@@ -94,6 +118,7 @@ describe("App", () => {
         }}
         dictionaryQuery="画面"
         error={null}
+        fullscreen
         ocrEnabled
         ocrPage={{
           id: "ocr-1",
@@ -109,6 +134,7 @@ describe("App", () => {
         onBack={() => undefined}
         onCreateCard={() => undefined}
         onDictionaryQueryChange={() => undefined}
+        onFullscreenChange={() => undefined}
         onLookup={() => undefined}
         onNavigate={() => undefined}
         onOpenFolder={() => undefined}
@@ -121,16 +147,56 @@ describe("App", () => {
           width: 1200,
           height: 1800,
           imageDataUrl: "data:image/png;base64,AAAA",
+          selectableText: null,
         }}
       />,
     );
 
     expect(markup).toContain("Japanese → Vietnamese");
+    expect(markup).toContain("Exit fullscreen");
     expect(markup).toContain("Selectable page text");
     expect(markup).toContain("画面を見ます。");
     expect(markup).toContain("màn hình");
     expect(markup).toContain('value="2"');
     expect(markup).toContain("/ 56");
+  });
+
+  it("uses a PDF text layer without requiring OCR", () => {
+    const markup = renderToStaticMarkup(
+      <StudyReader
+        ankiEnabled={false}
+        busy={false}
+        dictionaryEnabled
+        dictionaryLookup={null}
+        dictionaryQuery=""
+        error={null}
+        fullscreen={false}
+        ocrEnabled={false}
+        ocrPage={null}
+        onBack={() => undefined}
+        onCreateCard={() => undefined}
+        onDictionaryQueryChange={() => undefined}
+        onFullscreenChange={() => undefined}
+        onLookup={() => undefined}
+        onNavigate={() => undefined}
+        onOpenFolder={() => undefined}
+        onRunOcr={() => undefined}
+        page={{
+          bookId: books[1].id,
+          bookTitle: books[1].title,
+          pageIndex: 0,
+          pageCount: 12,
+          width: 1200,
+          height: 1800,
+          imageDataUrl: "data:image/png;base64,AAAA",
+          selectableText: "日本語のPDFテキスト",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("日本語のPDFテキスト");
+    expect(markup).toContain("Text extracted directly from this PDF page.");
+    expect(markup).not.toContain(">OCR page<");
   });
 
   it("labels rescan and cover repair independently", () => {
@@ -192,6 +258,11 @@ describe("App", () => {
     expect(filterCatalogBooks(books, "rust pdf missing")).toEqual([books[1]]);
     expect(filterCatalogBooks(books, "rust available")).toEqual([]);
     expect(filterCatalogBooks(books, "   ")).toBe(books);
+  });
+
+  it("hides missing books from the default catalog without changing their records", () => {
+    expect(filterVisibleCatalogBooks(books)).toEqual([books[0]]);
+    expect(books[1].status).toBe("missing");
   });
 
   it("filters related-book combobox choices by Unicode title and folder", () => {
@@ -328,6 +399,8 @@ describe("App", () => {
     expect(markup).toContain("Refresh");
     expect(markup).toContain("Open externally");
     expect(markup).toContain("Related idea");
+    expect(markup).toContain("BlockNote editor");
+    expect(markup).toContain('aria-label="Markdown note editor"');
     expect(markup).toContain(">Save<");
   });
 

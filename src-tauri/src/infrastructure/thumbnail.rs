@@ -160,7 +160,10 @@ impl ThumbnailService {
         })
     }
 
-    fn materialize_study_page(&self, source: &BookPageSource) -> Result<PathBuf, StudyError> {
+    fn materialize_study_page(
+        &self,
+        source: &BookPageSource,
+    ) -> Result<(PathBuf, Option<String>), StudyError> {
         let authorized_root = source
             .library_root
             .canonicalize()
@@ -179,8 +182,11 @@ impl ThumbnailService {
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).map_err(|_| StudyError::OcrFailed)?;
         }
-        let image = if source.kind == "image_folder" {
-            image::open(&canonical_source).map_err(|_| StudyError::SourceUnavailable)?
+        let (image, selectable_text) = if source.kind == "image_folder" {
+            (
+                image::open(&canonical_source).map_err(|_| StudyError::SourceUnavailable)?,
+                None,
+            )
         } else if source.kind == "pdf_file" {
             let _render_guard = acquire_render_lock(&PDFIUM_RENDER_LOCK);
             let pdfium =
@@ -194,14 +200,22 @@ impl ThumbnailService {
                 .pages()
                 .get(page_index)
                 .map_err(|_| StudyError::SourceUnavailable)?;
-            page.render_with_config(
-                &PdfRenderConfig::new()
-                    .set_target_width(1800)
-                    .render_form_data(true),
+            let selectable_text = page
+                .text()
+                .ok()
+                .map(|text| text.all())
+                .filter(|text| !text.trim().is_empty());
+            (
+                page.render_with_config(
+                    &PdfRenderConfig::new()
+                        .set_target_width(1800)
+                        .render_form_data(true),
+                )
+                .map_err(|_| StudyError::OcrFailed)?
+                .as_image()
+                .map_err(|_| StudyError::OcrFailed)?,
+                selectable_text,
             )
-            .map_err(|_| StudyError::OcrFailed)?
-            .as_image()
-            .map_err(|_| StudyError::OcrFailed)?
         } else {
             return Err(StudyError::SourceUnavailable);
         };
@@ -225,17 +239,17 @@ impl ThumbnailService {
         image
             .save_with_format(&destination, ImageFormat::Png)
             .map_err(|_| StudyError::OcrFailed)?;
-        Ok(destination)
+        Ok((destination, selectable_text))
     }
 }
 
 impl PageMaterializer for ThumbnailService {
     fn materialize(&self, source: &BookPageSource) -> Result<PathBuf, StudyError> {
-        self.materialize_study_page(source)
+        self.materialize_study_page(source).map(|(path, _)| path)
     }
 
     fn render(&self, source: &BookPageSource) -> Result<RenderedStudyPage, StudyError> {
-        let path = self.materialize_study_page(source)?;
+        let (path, selectable_text) = self.materialize_study_page(source)?;
         let image = image::open(&path).map_err(|_| StudyError::SourceUnavailable)?;
         let (width, height) = image.dimensions();
         let bytes = std::fs::read(path).map_err(|_| StudyError::SourceUnavailable)?;
@@ -244,6 +258,7 @@ impl PageMaterializer for ThumbnailService {
             width,
             height,
             media_type: "image/png".to_owned(),
+            selectable_text,
         })
     }
 }
@@ -448,5 +463,35 @@ mod tests {
 
         assert!(app_data.path().join(first.cache_relative_path).is_file());
         assert!(app_data.path().join(second.cache_relative_path).is_file());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn study_reader_renders_an_authorized_pdf_page() {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let library_root = manifest.join("../tests/fixtures").canonicalize().unwrap();
+        let pdfium_directory = manifest.join("resources/pdfium/windows-x86_64");
+        let app_data = TempDir::new().unwrap();
+        let source_path = library_root.join("pdfium-smoke.pdf");
+        let source_before = std::fs::read(&source_path).unwrap();
+        let source = BookPageSource {
+            book_id: BookId::new(),
+            title: "PDF reader smoke".to_owned(),
+            page_index: 0,
+            page_count: 1,
+            source_fingerprint: "pdf:smoke".to_owned(),
+            library_root,
+            source_path: source_path.clone(),
+            kind: "pdf_file".to_owned(),
+        };
+        let service = ThumbnailService::new(app_data.path().to_path_buf(), pdfium_directory);
+
+        let rendered = service.render(&source).unwrap();
+
+        assert_eq!(rendered.media_type, "image/png");
+        assert!(rendered.width > 0);
+        assert!(rendered.height > 0);
+        assert!(!rendered.bytes.is_empty());
+        assert_eq!(std::fs::read(source_path).unwrap(), source_before);
     }
 }

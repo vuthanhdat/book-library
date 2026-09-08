@@ -64,7 +64,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 | LIB-011 | Manual rescan and projection repair | Completed | M1 |
 | LIB-012 | Favorite books | Deferred | Post-MVP |
 | LIB-013 | Multiple libraries | Deferred | Post-MVP |
-| LIB-014 | Realtime catalog filtering by title, path, kind, and status | Completed | M2 |
+| LIB-014 | Realtime catalog filtering by title, path, kind, and status with missing-source records hidden by default | Completed | M2 |
 | LIB-015 | Edit app-local book display title without changing source files | Completed | M2 |
 | LIB-016 | Open nearest existing authorized folder for a missing book | Completed | M4 |
 | LIB-017 | Explicitly relink a missing source inside the configured library | Completed | M4 |
@@ -81,7 +81,7 @@ Design documents alone never justify `In Progress` or `Completed`.
 | READ-005 | Single-page and continuous image reading modes | Deferred | Post-MVP |
 | READ-006 | Zoom, fit width, fit height, and rotation | In Progress | M6 |
 | READ-007 | Lazy loading and bounded page cache | Deferred | Post-MVP |
-| READ-008 | Fullscreen and keyboard shortcuts | Deferred | Post-MVP |
+| READ-008 | Fullscreen and keyboard shortcuts | In Progress | M6 |
 | READ-009 | User-readable source-location availability errors | Completed | M2 |
 | PROG-001 | Debounced automatic progress save | Deferred | Post-MVP |
 | PROG-002 | Resume from last reading location | Deferred | Post-MVP |

@@ -29,6 +29,7 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-014](ADR-014-m6-offline-japanese-study-baseline.md) | Accepted | Start M6 with disabled offline study modules, importable dictionary data, explicit page OCR, review drafts, and isolated provider/runtime failures. |
 | [ADR-015](ADR-015-user-provided-yomitan-dictionary-import.md) | Accepted | Import bounded user-provided Yomitan ZIP dictionaries without bundling or extracting their data. |
 | [ADR-016](ADR-016-integrated-study-reader.md) | Accepted | Retain external opening and add a bounded integrated reader for page OCR and adjacent offline dictionary lookup. |
+| [ADR-017](ADR-017-blocknote-markdown-editor.md) | Accepted | Use BlockNote as the in-app editor while keeping Markdown canonical and frontmatter opaque. |
 
 ## ADR format
 

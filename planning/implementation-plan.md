@@ -293,6 +293,8 @@ offline availability of the core product.
   books while retaining external opening;
 - navigate explicitly requested pages, zoom the presentation, and keep local
   dictionary results adjacent to selectable saved OCR text;
+- expose explicit fullscreen and prefer a PDF's existing text layer before the
+  user requests OCR;
 - show token boundaries as suggestions and allow the user to correct the lookup
   term;
 - create an editable Markdown-note insertion or flashcard draft with book

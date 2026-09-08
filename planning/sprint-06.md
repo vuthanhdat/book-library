@@ -6,7 +6,7 @@
 - **Milestone:** M6 — Optional intelligence
 - **Platforms:** Windows implementation and automated gates first; macOS Intel
   validation required before feature completion
-- **Feature IDs:** READ-002 through READ-004, READ-006, OCR-001, OCR-002,
+- **Feature IDs:** READ-002 through READ-004, READ-006, READ-008, OCR-001, OCR-002,
   DICT-001 through DICT-003, AI-001 through AI-004, ANKI-001, PLUGIN-001
 - **Sequencing:** explicitly authorized by the maintainer before M5 completion;
   absent M5 source remains `Planned`
@@ -51,8 +51,9 @@ library or Markdown workflows depend on any optional runtime.
     uses the available desktop width, and selecting OCR text triggers dictionary
     lookup directly.
 13. `Read & Study` renders one PDF or image-folder page at a time, provides
-    bounded keyboard/button navigation and zoom, reuses saved OCR text, and
-    keeps Vietnamese dictionary results in a persistent adjacent panel.
+    bounded keyboard/button navigation, zoom, and fullscreen, extracts an
+    existing PDF text layer before OCR, reuses saved OCR text, and keeps
+    Vietnamese dictionary results in a persistent adjacent panel.
 
 ## Acceptance currently passing
 

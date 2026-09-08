@@ -16,6 +16,10 @@ Markdown must remain portable. Book Library should support useful conventions wi
 - Preserve user formatting as much as possible when editing.
 - Parse links, headings, tags, and frontmatter for indexing.
 
+The in-app BlockNote editor targets the common CommonMark/GFM subset. Its body
+round-trip may normalize unsupported Markdown on an explicit save. YAML
+frontmatter is not passed through BlockNote and is preserved as an opaque block.
+
 # Responsibilities
 
 - Define supported Markdown features.

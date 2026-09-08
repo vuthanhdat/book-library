@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "Default desktop capability",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-fullscreen",
+    "dialog:allow-open"
+  ]
 }

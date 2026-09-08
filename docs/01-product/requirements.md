@@ -20,7 +20,11 @@ Functional requirements:
 - Open one cataloged PDF or image-folder page in an integrated Study Reader.
 - Navigate pages and look up selected saved OCR text in an adjacent offline
   Japanese-to-Vietnamese dictionary.
-- Filter the local catalog in real time by title, path, kind, and status.
+- Use an existing PDF text layer before OCR and allow the Study Reader to occupy
+  the full desktop window explicitly.
+- Filter the visible local catalog in real time by title, path, kind, and
+  status; retain missing-source records for recovery but hide them from the
+  default catalog.
 - Edit an app-local display title without renaming or rewriting the source book.
 - Store metadata and rebuildable search indexes in SQLite when required.
 - Create and edit Markdown notes associated with books and topics.
