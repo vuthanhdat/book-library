@@ -98,11 +98,8 @@ A Book owns
 - Tags
 - Thumbnail Metadata
 
-A Book does NOT own
-
-- Note files
-
-Notes merely reference a Book.
+A Book is associated with its Notes through the note projection, but it does
+not own the Markdown files or their contents.
 
 Source of Truth
 
@@ -170,11 +167,9 @@ Projection
 
 SQLite Metadata
 
-A Note references one or more Books.
-
-A Book does not own Notes.
-
-This allows one Note to reference multiple Books.
+A managed Note references exactly one Book. The Markdown file remains
+user-owned and portable; the book association is represented in frontmatter
+and the rebuildable SQLite projection.
 
 ---
 
@@ -368,9 +363,10 @@ Bookmarks always belong to one Book.
 
 ## Notes
 
-Notes may reference multiple Books.
+Every managed Note references exactly one Book.
 
-Books never own Notes.
+Books do not own Markdown note files, but their linked notes are grouped and
+shown in the book workflow.
 
 ---
 

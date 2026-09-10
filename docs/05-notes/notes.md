@@ -10,8 +10,11 @@ Notes are central to transforming a reader into a knowledge platform. They must 
 
 - Store notes as Markdown files.
 - Use relative paths for note references.
-- Associate notes with books, bookmarks, pages, and topics.
-- Allow notes to be opened and edited from the app.
+- Associate every managed note with exactly one cataloged book.
+- Open and edit notes from a Book Detail context, with the note list scoped to
+  that book.
+- Allow an explicit user action to delete a Markdown note from the configured
+  notes root.
 - Keep note files readable by Obsidian and any text editor.
 - Maintain note metadata in SQLite as an index/cache.
 - Avoid proprietary note formats.
@@ -19,13 +22,26 @@ Notes are central to transforming a reader into a knowledge platform. They must 
 # Responsibilities
 
 - Create and locate Markdown notes.
-- Maintain book-note associations.
+- Delete a selected Markdown note only through an explicit user action, or
+  remove a stale missing-note projection after its file is gone.
+- Maintain mandatory book-note associations.
 - Parse links and metadata for search and navigation.
 - Preserve user-authored text as filesystem content.
 
 # Architecture
 
 The notes module should use Markdown files as source content and SQLite as a projection. The application layer creates note paths according to policy. The Markdown adapter reads, writes, and parses notes. Search indexing consumes parsed note text.
+
+Book Library does not create standalone managed notes. New notes are stored
+under a readable directory derived from the book relative path, such as
+`Shelf/Book.pdf/Reading note-<short-id>.md`, and contain the portable
+`book_relative_path` frontmatter association. Existing unlinked Markdown files
+are user-owned and are never moved or deleted automatically; refresh reports
+them as issues instead of adding them to the managed projection.
+
+The app does not expose a standalone Notes entry in the primary navigation.
+Users open a book's note workspace from Book Detail, and can return to that
+book without losing context.
 
 The in-app editor is BlockNote in the React presentation layer. It edits the
 Markdown body through BlockNote's CommonMark/GFM conversion, while YAML
@@ -56,7 +72,7 @@ flowchart TD
 Note tables:
 
 - `notes(id, relative_path, title, note_kind, fingerprint, created_at, updated_at)`
-- `book_note_links(id, book_id, note_id, relation_kind, location_payload)`
+- `book_note_links(note_id PRIMARY KEY, book_id, relation_kind)` — exactly one book per managed note.
 - `note_links(id, source_note_id, target_kind, target_ref, link_text)`
 - `note_frontmatter(note_id, key, value)` optional projection.
 

@@ -68,7 +68,8 @@ Design documents alone never justify `In Progress` or `Completed`.
 | LIB-015 | Edit app-local book display title without changing source files | Completed | M2 |
 | LIB-016 | Open nearest existing authorized folder for a missing book | Completed | M4 |
 | LIB-017 | Explicitly relink a missing source inside the configured library | Completed | M4 |
-| LIB-018 | Book Detail with reading status, book tags, linked Markdown notes, and explicit cover retry | Completed | M4 |
+| LIB-018 | Book Detail with reading status, book tags, bulk catalog tagging, linked Markdown notes, and explicit cover retry | Completed | M4 |
+| LIB-019 | Group catalog by tag or folder with collapsible sections and expand/collapse-all controls | Completed | M4 |
 
 ## Reader and reading state
 
@@ -96,8 +97,8 @@ Design documents alone never justify `In Progress` or `Completed`.
 | ID | Feature | Status | Milestone |
 |---|---|---|---|
 | NOTE-001 | Configure notes root | Completed | M3 |
-| NOTE-002 | Create and conservatively edit Markdown notes | Completed | M3 |
-| NOTE-003 | Associate notes with books | Completed | M3 |
+| NOTE-002 | Create, conservatively edit, and explicitly delete Markdown notes | Completed | M3 |
+| NOTE-003 | Associate each note with exactly one book and group new files by book | Completed | M3 |
 | NOTE-004 | Parse headings, tags, links, and YAML frontmatter | Completed | M3 |
 | NOTE-005 | Rebuildable SQLite note projection | Completed | M3 |
 | NOTE-006 | Open note/folder in external editor or Obsidian | Completed | M3 |

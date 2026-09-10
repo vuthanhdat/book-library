@@ -104,7 +104,7 @@ Detailed tasks and acceptance criteria are in [Sprint 04](sprint-04.md).
 |---|---|---|---|---|---|
 | M3-01 Notes-root configuration | NOTE-001 | P0 | Done | M0 settings | Configure and validate a notes root. |
 | M3-02 Markdown file workflow | NOTE-002 | P0 | Done | M3-01 | Create and conservatively edit portable notes. |
-| M3-03 Book associations | NOTE-003 | P0 | Done | M1 catalog, M3-02 | Notes link to cataloged books; page-level locations remain deferred. |
+| M3-03 Book associations | NOTE-003 | P0 | Done | M1 catalog, M3-02 | Every managed note links to exactly one cataloged book and new files are grouped in a book-scoped folder; page-level locations remain deferred. |
 | M3-04 Markdown projection | NOTE-004, NOTE-005 | P0 | Done | M3-02 | Parse metadata/links into rebuildable SQLite projections. |
 | M3-05 External interoperability | NOTE-006 | P1 | Done | M3-01 | Open notes and folders in normal editors/Obsidian on both platforms. |
 | M3-06 Backlinks | NOTE-007 | P1 | Done | M3-04 | Resolve and display basic backlinks. |

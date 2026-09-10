@@ -67,7 +67,7 @@ Core entities:
 - `Contributor`: author, editor, translator, or publisher metadata.
 - `ReadingSession`: time-bounded reading activity.
 - `Bookmark`: saved location in a book.
-- `Note`: Markdown file associated with a book or topic.
+- `Note`: Markdown file associated with exactly one book.
 - `SearchDocument`: normalized content indexed by SQLite FTS5.
 - `Module`: optional feature package with declared permissions.
 

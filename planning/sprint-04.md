@@ -16,7 +16,8 @@ the filesystem canonical and SQLite projections rebuildable.
 
 1. Configure and validate one notes root.
 2. Create and atomically save UTF-8 Markdown files.
-3. Associate app-created notes with books through portable frontmatter.
+3. Require every managed note to associate with one book through portable
+   frontmatter and store new notes in a book-scoped directory.
 4. Project titles, headings, tags, links, and book relationships into SQLite.
 5. List/read/edit notes in a minimal Markdown workspace.
 6. Open a note or notes root externally.
@@ -31,6 +32,9 @@ the filesystem canonical and SQLite projections rebuildable.
 - explicit Save uses an atomic replacement in the same directory;
 - refresh does not rewrite, rename, move, or delete Markdown;
 - book links use `book_relative_path`, not an app UUID;
+- new notes are grouped below a directory derived from the book relative path;
+- a note without a valid book association is reported as a refresh issue and
+  is not added to the managed projection;
 - wiki and relative Markdown links produce backlinks;
 - an unreadable or malformed note does not block other notes;
 - notes and the notes root open through normal external applications;

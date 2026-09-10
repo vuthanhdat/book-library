@@ -30,6 +30,7 @@ ADRs capture decisions that materially constrain implementation. Accepted ADRs o
 | [ADR-015](ADR-015-user-provided-yomitan-dictionary-import.md) | Accepted | Import bounded user-provided Yomitan ZIP dictionaries without bundling or extracting their data. |
 | [ADR-016](ADR-016-integrated-study-reader.md) | Accepted | Retain external opening and add a bounded integrated reader for page OCR and adjacent offline dictionary lookup. |
 | [ADR-017](ADR-017-blocknote-markdown-editor.md) | Accepted | Use BlockNote as the in-app editor while keeping Markdown canonical and frontmatter opaque. |
+| [ADR-018](ADR-018-book-scoped-notes.md) | Accepted | Require every managed note to belong to one book and group new files by book. |
 
 ## ADR format
 

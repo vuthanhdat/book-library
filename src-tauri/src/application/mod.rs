@@ -13,8 +13,9 @@ mod status;
 mod study;
 
 pub(crate) use book_detail::{
-    BookDetailError, BookDetailRecord, BookDetailRepository, BookThumbnailTarget, ForceBookCover,
-    GetBookDetail, LinkedBookNote, RepairBookCovers, UpdateBookDetail,
+    AddTagToBooks, BookDetailError, BookDetailRecord, BookDetailRepository, BookTagUpdate,
+    BookThumbnailTarget, ForceBookCover, GetBookDetail, LinkedBookNote, RepairBookCovers,
+    UpdateBookDetail,
 };
 pub(crate) use book_metadata::{BookMetadataError, BookMetadataRepository, UpdateBookDisplayTitle};
 pub(crate) use book_relocation::{

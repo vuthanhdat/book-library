@@ -7,6 +7,7 @@ import {
 import {
   App,
   BookDetailPage,
+  collectBookTags,
   GlobalSearchWorkspace,
   NotesWorkspace,
   StudyReader,
@@ -15,6 +16,7 @@ import {
   filterBookChoices,
   filterCatalogBooks,
   filterVisibleCatalogBooks,
+  groupCatalogBooks,
   isValidBookDisplayTitle,
   parseBookTags,
   normalizeLookupSelection,
@@ -36,6 +38,7 @@ const books: Book[] = [
     modifiedAtMs: null,
     thumbnailDataUrl: null,
     thumbnailStatus: "pending",
+    tags: ["psychology", "japanese"],
   },
   {
     id: "2",
@@ -48,6 +51,7 @@ const books: Book[] = [
     modifiedAtMs: null,
     thumbnailDataUrl: null,
     thumbnailStatus: "error",
+    tags: ["rust"],
   },
 ];
 
@@ -79,6 +83,7 @@ describe("App", () => {
     expect(markup).toContain("Settings");
     expect(markup).not.toContain("sample book");
     expect(markup).toContain("Light theme");
+    expect(markup).not.toContain(">Notes</button>");
   });
 
   it("restores only a supported saved theme", () => {
@@ -260,6 +265,25 @@ describe("App", () => {
     expect(filterCatalogBooks(books, "   ")).toBe(books);
   });
 
+  it("groups catalog books by folder or tag without losing untagged books", () => {
+    expect(groupCatalogBooks(books, "folder").map((group) => group.label)).toEqual([
+      "Programming",
+      "日本語",
+    ]);
+    expect(groupCatalogBooks(books, "tag")).toEqual([
+      { label: "japanese", books: [books[0]] },
+      { label: "psychology", books: [books[0]] },
+      { label: "rust", books: [books[1]] },
+    ]);
+    expect(groupCatalogBooks([{ ...books[0], tags: [] }], "tag")[0].label).toBe(
+      "No tag",
+    );
+  });
+
+  it("collects a sorted unique list of tags for reuse in book detail", () => {
+    expect(collectBookTags(books)).toEqual(["japanese", "psychology", "rust"]);
+  });
+
   it("hides missing books from the default catalog without changing their records", () => {
     expect(filterVisibleCatalogBooks(books)).toEqual([books[0]]);
     expect(books[1].status).toBe("missing");
@@ -280,6 +304,7 @@ describe("App", () => {
     ]);
     const markup = renderToStaticMarkup(
       <BookDetailPage
+        availableTags={["japanese", "psychology", "rust"]}
         busy={false}
         coverProgress={[
           "Opening the source file and waiting for local availability…",
@@ -309,6 +334,8 @@ describe("App", () => {
     expect(markup).toContain("Rendering the first page");
     expect(markup).toContain("Reading status");
     expect(markup).toContain("Key ideas");
+    expect(markup).toContain("Add existing tag");
+    expect(markup).toContain("#japanese");
   });
 
   it("allows an unavailable cloud book to retry its cover", () => {
@@ -352,7 +379,7 @@ describe("App", () => {
   it("renders a portable Markdown notes workspace with explicit save and refresh", () => {
     const markup = renderToStaticMarkup(
       <NotesWorkspace
-        books={books}
+        book={books[0]}
         busy={false}
         configuration={{ displayName: "My Notes" }}
         draft={"# Reading note\n\nChanged"}
@@ -361,8 +388,17 @@ describe("App", () => {
           {
             id: "note-1",
             title: "Reading note",
-            relativePath: "Reading note.md",
+            relativePath: "Shelf/Book/Reading note.md",
             status: "available",
+            bookId: books[0].id,
+            bookTitle: books[0].title,
+            modifiedAtMs: 1,
+          },
+          {
+            id: "note-missing",
+            title: "Missing note",
+            relativePath: "Shelf/Book/Missing note.md",
+            status: "missing",
             bookId: books[0].id,
             bookTitle: books[0].title,
             modifiedAtMs: 1,
@@ -371,6 +407,8 @@ describe("App", () => {
         onChooseRoot={() => undefined}
         onCreate={() => undefined}
         onDraftChange={() => undefined}
+        onDelete={() => undefined}
+        onBackToBook={() => undefined}
         onOpenExternal={() => undefined}
         onOpenRoot={() => undefined}
         onRefresh={() => undefined}
@@ -379,7 +417,7 @@ describe("App", () => {
         selectedNote={{
           id: "note-1",
           title: "Reading note",
-          relativePath: "Reading note.md",
+          relativePath: "Shelf/Book/Reading note.md",
           body: "# Reading note\n",
           bookId: books[0].id,
           bookTitle: books[0].title,
@@ -396,8 +434,12 @@ describe("App", () => {
     );
 
     expect(markup).toContain("My Notes");
+    expect(markup).toContain("notes for");
+    expect(markup).toContain("Back to book");
     expect(markup).toContain("Refresh");
     expect(markup).toContain("Open externally");
+    expect(markup).toContain("Delete note");
+    expect(markup).toContain("Remove missing");
     expect(markup).toContain("Related idea");
     expect(markup).toContain("BlockNote editor");
     expect(markup).toContain('aria-label="Markdown note editor"');

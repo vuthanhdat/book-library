@@ -23,6 +23,8 @@ File kết quả:
 src-tauri\target\release\book-library.exe
 ```
 
+Bản release Windows chạy ở chế độ GUI nên không mở thêm cửa sổ terminal phía sau.
+
 Build release kèm bộ cài Windows:
 
 ```powershell

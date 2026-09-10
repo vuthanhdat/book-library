@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 
-const navigation = ["Library", "Study", "Recent", "Notes", "Search", "Settings"];
+const navigation = ["Library", "Study", "Recent", "Search", "Settings"];
 
 export interface ApplicationStatus {
   databaseHealthy: boolean;
@@ -95,7 +95,6 @@ interface LinkedBookNote {
 
 export interface BookDetail extends Book {
   readingStatus: "unread" | "reading" | "read";
-  tags: string[];
   notes: LinkedBookNote[];
 }
 
@@ -108,8 +107,8 @@ export interface NoteListItem {
   title: string;
   relativePath: string;
   status: "available" | "missing" | "error";
-  bookId: string | null;
-  bookTitle: string | null;
+  bookId: string;
+  bookTitle: string;
   modifiedAtMs: number | null;
 }
 
@@ -129,8 +128,8 @@ interface NoteDetail {
   title: string;
   relativePath: string;
   body: string;
-  bookId: string | null;
-  bookTitle: string | null;
+  bookId: string;
+  bookTitle: string;
   backlinks: NoteBacklink[];
 }
 
@@ -273,7 +272,15 @@ export interface Book {
   modifiedAtMs: number | null;
   thumbnailDataUrl: string | null;
   thumbnailStatus: "pending" | "ready" | "error";
+  tags: string[];
 }
+
+interface BookTagUpdate {
+  bookId: string;
+  tags: string[];
+}
+
+export type CatalogGroupBy = "none" | "folder" | "tag";
 
 export type StartupState =
   | { kind: "loading" }
@@ -311,7 +318,12 @@ export function App() {
   const [configuration, setConfiguration] =
     useState<LibraryConfiguration | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
+  const [bulkTag, setBulkTag] = useState("");
+  const [bulkTagBusy, setBulkTagBusy] = useState(false);
+  const [bulkTagError, setBulkTagError] = useState<DesktopError | null>(null);
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [groupBy, setGroupBy] = useState<CatalogGroupBy>("tag");
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [activeScan, setActiveScan] = useState<ActiveScan | null>(null);
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
@@ -379,6 +391,7 @@ export function App() {
     () => filterCatalogBooks(catalogBooks, deferredSearchQuery),
     [catalogBooks, deferredSearchQuery],
   );
+  const availableBookTags = useMemo(() => collectBookTags(books), [books]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -387,7 +400,11 @@ export function App() {
   }, [theme]);
 
   const loadBooks = useCallback(async () => {
-    setBooks(await invoke<Book[]>("list_library_books"));
+    const nextBooks = await invoke<Book[]>("list_library_books");
+    setBooks(nextBooks);
+    setSelectedBookIds((current) =>
+      current.filter((bookId) => nextBooks.some((book) => book.id === bookId)),
+    );
   }, []);
 
   const loadStudy = useCallback(async () => {
@@ -434,6 +451,27 @@ export function App() {
       setNotesError(desktopError(error));
     }
   }, []);
+
+  const openNoteFromSearch = async (noteId: string) => {
+    setNotesError(null);
+    try {
+      const detail = await invoke<NoteDetail>("read_note", { noteId });
+      const book = books.find((item) => item.id === detail.bookId);
+      if (!book) {
+        setNotesError({
+          code: "book_not_found",
+          message: "The book linked to this note is no longer in the catalog.",
+        });
+        return;
+      }
+      await openBookDetail(book.id);
+      setSelectedNote(detail);
+      setNoteDraft(detail.body);
+      setActiveSection("Notes");
+    } catch (error) {
+      setNotesError(desktopError(error));
+    }
+  };
 
   useEffect(() => {
     void Promise.all([
@@ -620,6 +658,8 @@ export function App() {
 
   const openBookDetail = async (bookId: string) => {
     catalogScrollY.current = window.scrollY;
+    setSelectedNote(null);
+    setNoteDraft("");
     setBookDetailBusy(true);
     setBookDetailError(null);
     setCoverProgress([]);
@@ -637,6 +677,8 @@ export function App() {
   const closeBookDetail = () => {
     restoreCatalogScroll.current = true;
     setSelectedBookDetail(null);
+    setSelectedNote(null);
+    setNoteDraft("");
   };
 
   useLayoutEffect(() => {
@@ -656,17 +698,46 @@ export function App() {
     setBookDetailBusy(true);
     setBookDetailError(null);
     try {
-      setSelectedBookDetail(
-        await invoke<BookDetail>("update_book_detail", {
-          bookId: selectedBookDetail.id,
-          readingStatus,
-          tags,
-        }),
+      const detail = await invoke<BookDetail>("update_book_detail", {
+        bookId: selectedBookDetail.id,
+        readingStatus,
+        tags,
+      });
+      setSelectedBookDetail(detail);
+      setBooks((current) =>
+        current.map((book) =>
+          book.id === detail.id ? { ...book, tags: detail.tags } : book,
+        ),
       );
     } catch (error) {
       setBookDetailError(desktopError(error));
     } finally {
       setBookDetailBusy(false);
+    }
+  };
+
+  const addTagToSelectedBooks = async (tag: string) => {
+    const bookIds = selectedBookIds;
+    if (!tag || bookIds.length === 0) return;
+    setBulkTagBusy(true);
+    setBulkTagError(null);
+    try {
+      const updates = await invoke<BookTagUpdate[]>("add_tag_to_books", {
+        bookIds,
+        tag,
+      });
+      setBooks((current) =>
+        current.map((book) => {
+          const update = updates.find((item) => item.bookId === book.id);
+          return update ? { ...book, tags: update.tags } : book;
+        }),
+      );
+      setSelectedBookIds([]);
+      setBulkTag("");
+    } catch (error) {
+      setBulkTagError(desktopError(error));
+    } finally {
+      setBulkTagBusy(false);
     }
   };
 
@@ -744,7 +815,7 @@ export function App() {
     }
   };
 
-  const createNote = async (title: string, bookId: string | null) => {
+  const createNote = async (title: string, bookId: string) => {
     setNotesBusy(true);
     setNotesError(null);
     try {
@@ -809,6 +880,37 @@ export function App() {
       });
       setSelectedNote(detail);
       setNoteDraft(detail.body);
+      await loadNotes();
+    } catch (error) {
+      setNotesError(desktopError(error));
+    } finally {
+      setNotesBusy(false);
+    }
+  };
+
+  const deleteNote = async (note: NoteListItem) => {
+    const isMissing = note.status === "missing";
+    const confirmed = window.confirm(
+      isMissing
+        ? `Remove "${note.title}" from the notes list? Its Markdown file is already missing.`
+        : `Delete "${note.title}"? This permanently deletes the Markdown file.`,
+    );
+    if (!confirmed) return;
+    setNotesBusy(true);
+    setNotesError(null);
+    try {
+      await invoke("delete_note", { noteId: note.id });
+      setSelectedBookDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          notes: current.notes.filter((linkedNote) => linkedNote.id !== note.id),
+        };
+      });
+      if (selectedNote?.id === note.id) {
+        setSelectedNote(null);
+        setNoteDraft("");
+      }
       await loadNotes();
     } catch (error) {
       setNotesError(desktopError(error));
@@ -1129,11 +1231,7 @@ export function App() {
 
   return (
     <main className="min-h-screen bg-stone-950 text-stone-100">
-      <div
-        className={`mx-auto min-h-screen ${
-          readerFullscreen ? "max-w-none" : "max-w-[1920px]"
-        }`}
-      >
+      <div className="min-h-screen w-full">
         {!readerFullscreen && (
         <header className="sticky top-0 z-40 flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 border-b border-stone-800 bg-stone-950/95 px-5 py-3 backdrop-blur md:flex-nowrap md:px-7 md:py-0">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-400">
@@ -1144,7 +1242,6 @@ export function App() {
               const enabled =
                 item === "Library" ||
                 item === "Study" ||
-                item === "Notes" ||
                 item === "Search";
               return (
               <button
@@ -1161,7 +1258,7 @@ export function App() {
                   enabled &&
                   (setReaderPage(null),
                   setActiveSection(
-                    item as "Library" | "Study" | "Notes" | "Search",
+                    item as "Library" | "Study" | "Search",
                   ))
                 }
                 type="button"
@@ -1312,8 +1409,7 @@ export function App() {
                       setActiveSection("Library");
                       void openBookDetail(result.sourceId);
                     } else if (result.sourceKind === "note") {
-                      setActiveSection("Notes");
-                      void readNote(result.sourceId);
+                      void openNoteFromSearch(result.sourceId);
                     } else {
                       setActiveSection("Study");
                     }
@@ -1325,14 +1421,13 @@ export function App() {
                   results={searchResults}
                   scope={globalScope}
                 />
-              ) : activeSection === "Notes" ? (
+              ) : activeSection === "Notes" && selectedBookDetail ? (
                 <NotesWorkspace
-                  books={books}
+                  book={selectedBookDetail}
                   busy={notesBusy}
                   configuration={notesConfiguration}
                   draft={noteDraft}
                   error={notesError}
-                  notes={notes}
                   theme={theme}
                   onChooseRoot={() => void chooseNotesRoot()}
                   onCreate={(title, bookId) => void createNote(title, bookId)}
@@ -1349,10 +1444,23 @@ export function App() {
                     )
                   }
                   onRefresh={() => void refreshNotes()}
+                  onDelete={(note) => void deleteNote(note)}
+                  onBackToBook={() => {
+                    setSelectedNote(null);
+                    setNoteDraft("");
+                    setActiveSection("Library");
+                  }}
                   onSave={() => void saveNote()}
                   onSelect={(noteId) => void readNote(noteId)}
-                  selectedNote={selectedNote}
+                  selectedNote={
+                    selectedNote?.bookId === selectedBookDetail.id
+                      ? selectedNote
+                      : null
+                  }
                   summary={notesSummary}
+                  notes={notes.filter(
+                    (note) => note.bookId === selectedBookDetail.id,
+                  )}
                 />
               ) : !configuration ? (
                 <SetupLibrary
@@ -1361,6 +1469,7 @@ export function App() {
                 />
               ) : selectedBookDetail ? (
                 <BookDetailPage
+                  availableTags={availableBookTags}
                   busy={bookDetailBusy}
                   coverProgress={coverProgress}
                   detail={selectedBookDetail}
@@ -1374,6 +1483,8 @@ export function App() {
                   }
                   onForceCover={() => void forceBookCover()}
                   onNewNote={() => {
+                    setSelectedNote(null);
+                    setNoteDraft("");
                     void createNote(
                       `Notes for ${selectedBookDetail.title}`,
                       selectedBookDetail.id,
@@ -1397,7 +1508,11 @@ export function App() {
               ) : (
                 <LibraryWorkspace
                   activeScan={activeScan}
+                  availableTags={availableBookTags}
                   books={visibleBooks}
+                  bulkTag={bulkTag}
+                  bulkTagBusy={bulkTagBusy}
+                  bulkTagError={bulkTagError}
                   error={operationError}
                   onCancel={() => void cancelScan()}
                   onEditBook={startEditingBook}
@@ -1407,7 +1522,24 @@ export function App() {
                   onRepair={() => void runScan("repair_library")}
                   onRelinkBook={(book) => void relinkBook(book)}
                   onRescan={() => void runScan("rescan_library")}
+                  onBulkAddTag={(tag) => void addTagToSelectedBooks(tag)}
+                  onBulkTagChange={setBulkTag}
+                  onSelectVisibleBooks={(bookIds, selected) =>
+                    setSelectedBookIds((current) =>
+                      selected
+                        ? Array.from(new Set([...current, ...bookIds]))
+                        : current.filter((bookId) => !bookIds.includes(bookId)),
+                    )
+                  }
                   onSearchChange={setSearchQuery}
+                  onToggleBookSelection={(bookId) =>
+                    setSelectedBookIds((current) =>
+                      current.includes(bookId)
+                        ? current.filter((item) => item !== bookId)
+                        : [...current, bookId],
+                    )
+                  }
+                  onGroupByChange={setGroupBy}
                   onViewChange={setView}
                   openingBookId={openingBookId}
                   progress={scanProgress}
@@ -1415,6 +1547,8 @@ export function App() {
                   summary={scanSummary}
                   summaryKind={scanSummaryKind}
                   totalBooks={catalogBooks.length}
+                  groupBy={groupBy}
+                  selectedBookIds={selectedBookIds}
                   view={view}
                 />
               )}
@@ -2530,7 +2664,7 @@ export function safeSearchSnippet(snippet: string): string {
 }
 
 export function NotesWorkspace({
-  books,
+  book,
   busy,
   configuration,
   draft,
@@ -2539,6 +2673,8 @@ export function NotesWorkspace({
   onChooseRoot,
   onCreate,
   onDraftChange,
+  onDelete,
+  onBackToBook,
   onOpenExternal,
   onOpenRoot,
   onRefresh,
@@ -2548,15 +2684,17 @@ export function NotesWorkspace({
   summary,
   theme = "dark",
 }: {
-  books: Book[];
+  book: Book;
   busy: boolean;
   configuration: NotesConfiguration | null;
   draft: string;
   error: DesktopError | null;
   notes: NoteListItem[];
   onChooseRoot: () => void;
-  onCreate: (title: string, bookId: string | null) => void;
+  onCreate: (title: string, bookId: string) => void;
   onDraftChange: (body: string) => void;
+  onDelete: (note: NoteListItem) => void;
+  onBackToBook: () => void;
   onOpenExternal: () => void;
   onOpenRoot: () => void;
   onRefresh: () => void;
@@ -2568,34 +2706,37 @@ export function NotesWorkspace({
 }) {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [newBookId, setNewBookId] = useState("");
-  const [bookQuery, setBookQuery] = useState("");
-  const [bookPickerOpen, setBookPickerOpen] = useState(false);
-  const matchingBooks = useMemo(
-    () => filterBookChoices(books, bookQuery),
-    [books, bookQuery],
-  );
-  const selectedBook = books.find((book) => book.id === newBookId) ?? null;
 
   if (!configuration) {
     return (
       <div className="mx-auto mt-28 max-w-xl">
         <p className="text-sm text-amber-400">Markdown notes</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight">
-          Choose the folder that owns your notes.
+          Notes for {book.title}
         </h1>
         <p className="mt-5 leading-7 text-stone-400">
           Notes stay as portable Markdown files. Refresh only reads existing
           files; saving changes only the note currently open in the editor.
+          Every managed note belongs to a book and new notes are grouped in a
+          book-scoped folder.
         </p>
-        <button
-          className="mt-8 rounded-lg bg-amber-400 px-5 py-3 font-medium text-stone-950 disabled:opacity-50"
-          disabled={busy}
-          onClick={onChooseRoot}
-          type="button"
-        >
-          Choose notes folder
-        </button>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <button
+            className="rounded-lg border border-stone-700 px-4 py-3 text-sm"
+            onClick={onBackToBook}
+            type="button"
+          >
+            ← Back to book
+          </button>
+          <button
+            className="rounded-lg bg-amber-400 px-5 py-3 font-medium text-stone-950 disabled:opacity-50"
+            disabled={busy}
+            onClick={onChooseRoot}
+            type="button"
+          >
+            Choose notes folder
+          </button>
+        </div>
         {error && <ErrorPanel error={error} />}
       </div>
     );
@@ -2608,13 +2749,20 @@ export function NotesWorkspace({
         <div>
           <p className="text-sm text-amber-400">Markdown notes</p>
           <h1 className="mt-2 text-3xl font-semibold">
-            {notes.length} {notes.length === 1 ? "note" : "notes"}
+            {notes.length} {notes.length === 1 ? "note" : "notes"} for {book.title}
           </h1>
           <p className="mt-1 text-xs text-stone-500">
-            {configuration.displayName}
+            {configuration.displayName} · {book.relativePath}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            className="rounded-lg border border-stone-700 px-3 py-2 text-sm"
+            onClick={onBackToBook}
+            type="button"
+          >
+            ← Back to book
+          </button>
           <button
             className="rounded-lg border border-stone-700 px-3 py-2 text-sm"
             disabled={busy}
@@ -2666,28 +2814,41 @@ export function NotesWorkspace({
             </p>
           ) : (
             notes.map((note) => (
-              <button
-                className={`mb-1 block w-full rounded-lg p-3 text-left ${
-                  selectedNote?.id === note.id
-                    ? "bg-stone-800"
-                    : "hover:bg-stone-900"
+              <div
+                className={`mb-1 rounded-lg ${
+                  selectedNote?.id === note.id ? "bg-stone-800" : "hover:bg-stone-900"
                 }`}
                 key={note.id}
-                onClick={() => onSelect(note.id)}
-                type="button"
               >
-                <span className="block truncate text-sm text-stone-100">
-                  {note.title}
-                </span>
-                <span className="mt-1 block truncate text-xs text-stone-500">
-                  {note.bookTitle ?? note.relativePath}
-                </span>
-                {note.status !== "available" && (
-                  <span className="mt-1 block text-xs text-red-300">
-                    {note.status}
+                <button
+                  className="block w-full p-3 text-left"
+                  onClick={() => onSelect(note.id)}
+                  type="button"
+                >
+                  <span className="block truncate text-sm text-stone-100">
+                    {note.title}
                   </span>
+                  <span className="mt-1 block truncate text-xs text-stone-500">
+                    {note.bookTitle}
+                  </span>
+                  {note.status !== "available" && (
+                    <span className="mt-1 block text-xs text-red-300">
+                      {note.status}
+                    </span>
+                  )}
+                </button>
+                {note.status === "missing" && (
+                  <button
+                    aria-label={`Remove missing note ${note.title}`}
+                    className="mx-3 mb-2 rounded border border-red-900 px-2 py-1 text-xs text-red-300 hover:border-red-700 disabled:opacity-40"
+                    disabled={busy}
+                    onClick={() => onDelete(note)}
+                    type="button"
+                  >
+                    Remove missing
+                  </button>
                 )}
-              </button>
+              </div>
             ))
           )}
         </aside>
@@ -2701,7 +2862,7 @@ export function NotesWorkspace({
                 </h2>
                 <p className="mt-1 truncate text-xs text-stone-500">
                   {selectedNote.relativePath}
-                  {selectedNote.bookTitle && ` · ${selectedNote.bookTitle}`}
+                  {` · ${selectedNote.bookTitle}`}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -2711,6 +2872,24 @@ export function NotesWorkspace({
                   type="button"
                 >
                   Open externally
+                </button>
+                <button
+                  className="rounded-lg border border-red-900 px-3 py-2 text-xs text-red-300 hover:border-red-700 disabled:opacity-40"
+                  disabled={busy}
+                  onClick={() =>
+                    onDelete({
+                      id: selectedNote.id,
+                      title: selectedNote.title,
+                      relativePath: selectedNote.relativePath,
+                      status: "available",
+                      bookId: selectedNote.bookId,
+                      bookTitle: selectedNote.bookTitle,
+                      modifiedAtMs: null,
+                    })
+                  }
+                  type="button"
+                >
+                  Delete note
                 </button>
                 <button
                   className="rounded-lg bg-amber-400 px-4 py-2 text-xs font-medium text-stone-950 disabled:opacity-40"
@@ -2780,10 +2959,9 @@ export function NotesWorkspace({
             onSubmit={(event) => {
               event.preventDefault();
               if (!newTitle.trim()) return;
-              onCreate(newTitle, newBookId || null);
+              onCreate(newTitle, book.id);
               setCreating(false);
               setNewTitle("");
-              setNewBookId("");
             }}
           >
             <p className="text-sm text-amber-400">Portable Markdown</p>
@@ -2798,91 +2976,9 @@ export function NotesWorkspace({
                 value={newTitle}
               />
             </label>
-            <label className="mt-4 block text-sm text-stone-300">
-              Related book (optional)
-              <div className="relative mt-2">
-                <input
-                  aria-autocomplete="list"
-                  aria-controls="related-book-options"
-                  aria-expanded={bookPickerOpen}
-                  aria-label="Search related book"
-                  className="w-full rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 pr-10 outline-none focus:border-amber-500"
-                  onChange={(event) => {
-                    setBookQuery(event.target.value);
-                    setNewBookId("");
-                    setBookPickerOpen(true);
-                  }}
-                  onFocus={() => setBookPickerOpen(true)}
-                  placeholder="Type a title or folder…"
-                  role="combobox"
-                  value={selectedBook ? selectedBook.title : bookQuery}
-                />
-                {(bookQuery || selectedBook) && (
-                  <button
-                    aria-label="Clear related book"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 px-2 text-stone-500 hover:text-stone-200"
-                    onClick={() => {
-                      setNewBookId("");
-                      setBookQuery("");
-                      setBookPickerOpen(true);
-                    }}
-                    type="button"
-                  >
-                    ×
-                  </button>
-                )}
-                {bookPickerOpen && (
-                  <div
-                    className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-stone-700 bg-stone-950 p-1 shadow-2xl"
-                    id="related-book-options"
-                    role="listbox"
-                  >
-                    <button
-                      aria-selected={!newBookId}
-                      className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-stone-800"
-                      onClick={() => {
-                        setNewBookId("");
-                        setBookQuery("");
-                        setBookPickerOpen(false);
-                      }}
-                      role="option"
-                      type="button"
-                    >
-                      General note
-                      <span className="mt-0.5 block text-xs text-stone-500">
-                        Not linked to a book
-                      </span>
-                    </button>
-                    {matchingBooks.map((book) => (
-                      <button
-                        aria-selected={newBookId === book.id}
-                        className="block w-full rounded-md px-3 py-2 text-left hover:bg-stone-800"
-                        key={book.id}
-                        onClick={() => {
-                          setNewBookId(book.id);
-                          setBookQuery("");
-                          setBookPickerOpen(false);
-                        }}
-                        role="option"
-                        type="button"
-                      >
-                        <span className="block truncate text-sm">
-                          {book.title}
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-stone-500">
-                          {book.relativePath}
-                        </span>
-                      </button>
-                    ))}
-                    {matchingBooks.length === 0 && (
-                      <p className="px-3 py-4 text-center text-sm text-stone-500">
-                        No matching books.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </label>
+            <p className="mt-4 rounded-lg border border-stone-800 bg-stone-950/60 px-3 py-2 text-sm text-stone-400">
+              This note will be linked to <span className="text-stone-200">{book.title}</span>.
+            </p>
             <div className="mt-6 flex justify-end gap-2">
               <button
                 className="rounded-lg border border-stone-700 px-4 py-2 text-sm"
@@ -2936,6 +3032,7 @@ function SetupLibrary({
 }
 
 export function BookDetailPage({
+  availableTags = [],
   busy,
   coverProgress,
   detail,
@@ -2949,6 +3046,7 @@ export function BookDetailPage({
   onReadStudy,
   onSave,
 }: {
+  availableTags?: string[];
   busy: boolean;
   coverProgress: string[];
   detail: BookDetail;
@@ -2969,10 +3067,22 @@ export function BookDetailPage({
   const [tagDraft, setTagDraft] = useState(
     detail.tags.map((tag) => `#${tag}`).join(" "),
   );
+  const [tagToAdd, setTagToAdd] = useState("");
   const tags = parseBookTags(tagDraft);
+  const selectableTags = collectBookTags([
+    { tags: [...availableTags, ...detail.tags] },
+  ]).filter((tag) => !tags.includes(tag));
   const changed =
     readingStatus !== detail.readingStatus ||
     tags.join("\u0000") !== detail.tags.join("\u0000");
+
+  const addExistingTag = () => {
+    if (!tagToAdd) return;
+    setTagDraft((currentDraft) =>
+      parseBookTags(`${currentDraft} ${tagToAdd}`).join(" "),
+    );
+    setTagToAdd("");
+  };
 
   return (
     <>
@@ -3103,9 +3213,33 @@ export function BookDetailPage({
                   value={tagDraft}
                 />
               </label>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <select
+                  aria-label="Add existing tag"
+                  className="min-w-0 flex-1 rounded-lg border border-stone-700 bg-stone-900 px-3 py-2 text-sm outline-none focus:border-amber-500"
+                  disabled={selectableTags.length === 0 || busy}
+                  onChange={(event) => setTagToAdd(event.target.value)}
+                  value={tagToAdd}
+                >
+                  <option value="">Choose an existing tag…</option>
+                  {selectableTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      #{tag}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="rounded-lg border border-stone-700 px-3 py-2 text-sm text-stone-200 hover:border-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={!tagToAdd || busy}
+                  onClick={addExistingTag}
+                  type="button"
+                >
+                  Add tag
+                </button>
+              </div>
               <p className="mt-2 text-xs text-stone-500">
-                Separate tags with spaces or commas. These tags are included in
-                global search.
+                Choose a tag already used in the library, or enter a new one
+                above. Tags are included in global search.
               </p>
             </div>
           </div>
@@ -3126,7 +3260,8 @@ export function BookDetailPage({
               <div>
                 <h2 className="text-lg font-semibold">Markdown notes</h2>
                 <p className="mt-1 text-sm text-stone-500">
-                  Notes remain portable files in your notes folder.
+                  Notes remain portable files, grouped in this book&apos;s folder
+                  inside the notes root.
                 </p>
               </div>
               <button
@@ -3197,7 +3332,11 @@ export function parseBookTags(value: string): string[] {
 
 function LibraryWorkspace({
   activeScan,
+  availableTags,
   books,
+  bulkTag,
+  bulkTagBusy,
+  bulkTagError,
   error,
   onCancel,
   onEditBook,
@@ -3207,7 +3346,12 @@ function LibraryWorkspace({
   onRepair,
   onRelinkBook,
   onRescan,
+  onBulkAddTag,
+  onBulkTagChange,
+  onSelectVisibleBooks,
+  onGroupByChange,
   onSearchChange,
+  onToggleBookSelection,
   onViewChange,
   openingBookId,
   progress,
@@ -3215,10 +3359,16 @@ function LibraryWorkspace({
   summary,
   summaryKind,
   totalBooks,
+  groupBy,
+  selectedBookIds,
   view,
 }: {
   activeScan: ActiveScan | null;
+  availableTags: string[];
   books: Book[];
+  bulkTag: string;
+  bulkTagBusy: boolean;
+  bulkTagError: DesktopError | null;
   error: DesktopError | null;
   onCancel: () => void;
   onEditBook: (book: Book) => void;
@@ -3228,7 +3378,12 @@ function LibraryWorkspace({
   onRepair: () => void;
   onRelinkBook: (book: Book) => void;
   onRescan: () => void;
+  onBulkAddTag: (tag: string) => void;
+  onBulkTagChange: (tag: string) => void;
+  onSelectVisibleBooks: (bookIds: string[], selected: boolean) => void;
+  onGroupByChange: (groupBy: CatalogGroupBy) => void;
   onSearchChange: (query: string) => void;
+  onToggleBookSelection: (bookId: string) => void;
   onViewChange: (view: "grid" | "list") => void;
   openingBookId: string | null;
   progress: ScanProgress | null;
@@ -3236,9 +3391,21 @@ function LibraryWorkspace({
   summary: ScanSummary | null;
   summaryKind: ActiveScan | null;
   totalBooks: number;
+  groupBy: CatalogGroupBy;
+  selectedBookIds: string[];
   view: "grid" | "list";
 }) {
   const scanLabels = scanButtonLabels(activeScan);
+  const groupedBooks = groupCatalogBooks(books, groupBy);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(
+    {},
+  );
+  const visibleBookIds = Array.from(new Set(books.map((book) => book.id)));
+  const selectedVisibleBookCount = visibleBookIds.filter((bookId) =>
+    selectedBookIds.includes(bookId),
+  ).length;
+  const allVisibleBooksSelected =
+    visibleBookIds.length > 0 && selectedVisibleBookCount === visibleBookIds.length;
   return (
     <>
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-stone-800 pb-6">
@@ -3285,29 +3452,135 @@ function LibraryWorkspace({
         </div>
       </header>
 
-      <div className="mt-6 flex items-center gap-3 rounded-xl border border-stone-700 bg-stone-900/70 px-4 py-3 focus-within:border-amber-500">
-        <span aria-hidden="true" className="text-stone-500">
-          ⌕
-        </span>
-        <input
-          aria-label="Search catalog"
-          autoComplete="off"
-          className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-stone-600"
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search title, folder, type, or status…"
-          spellCheck={false}
-          type="search"
-          value={searchQuery}
-        />
-        {searchQuery && (
+      <div className="sticky top-28 z-30 -mx-5 mt-6 bg-stone-950/95 px-5 py-3 backdrop-blur md:-mx-7 md:top-16 md:px-7">
+        <div className="flex items-center gap-3 rounded-xl border border-stone-700 bg-stone-900/90 px-4 py-3 focus-within:border-amber-500">
+          <span aria-hidden="true" className="text-stone-500">
+            ⌕
+          </span>
+          <input
+            aria-label="Search catalog"
+            autoComplete="off"
+            className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-stone-600"
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search title, folder, type, status, or tag…"
+            spellCheck={false}
+            type="search"
+            value={searchQuery}
+          />
+          {searchQuery && (
+            <button
+              className="text-xs text-stone-400 hover:text-stone-200"
+              onClick={() => onSearchChange("")}
+              type="button"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-400">
+          <label className="flex items-center gap-2">
+            <input
+              aria-label="Select visible books"
+              checked={allVisibleBooksSelected}
+              disabled={visibleBookIds.length === 0 || bulkTagBusy}
+              onChange={(event) =>
+                onSelectVisibleBooks(visibleBookIds, event.target.checked)
+              }
+              type="checkbox"
+            />
+            Select visible books
+          </label>
+          {selectedBookIds.length > 0 && (
+            <span className="text-amber-300">
+              {selectedBookIds.length} selected
+            </span>
+          )}
+          <select
+            aria-label="Add tag to selected books"
+            className="rounded-lg border border-stone-700 bg-stone-900 px-2 py-1.5 text-xs text-stone-200 outline-none focus:border-amber-500"
+            disabled={selectedBookIds.length === 0 || bulkTagBusy}
+            onChange={(event) => onBulkTagChange(event.target.value)}
+            value={bulkTag}
+          >
+            <option value="">Add existing tag…</option>
+            {availableTags.map((tag) => (
+              <option key={tag} value={tag}>
+                #{tag}
+              </option>
+            ))}
+          </select>
           <button
-            className="text-xs text-stone-400 hover:text-stone-200"
-            onClick={() => onSearchChange("")}
+            className="rounded-lg border border-amber-500/60 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={selectedBookIds.length === 0 || !bulkTag || bulkTagBusy}
+            onClick={() => onBulkAddTag(bulkTag)}
             type="button"
           >
-            Clear
+            {bulkTagBusy ? "Adding…" : "Add tag"}
           </button>
-        )}
+          {selectedBookIds.length > 0 && (
+            <button
+              className="text-xs text-stone-500 hover:text-stone-300 disabled:opacity-40"
+              disabled={bulkTagBusy}
+              onClick={() => onSelectVisibleBooks(selectedBookIds, false)}
+              type="button"
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+        {bulkTagError && <div className="mt-3"><ErrorPanel error={bulkTagError} /></div>}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-stone-400">
+            <span>Group by</span>
+            <select
+              aria-label="Group catalog by"
+              className="rounded-lg border border-stone-700 bg-stone-900 px-2 py-1.5 text-xs text-stone-200 outline-none focus:border-amber-500"
+              onChange={(event) =>
+                onGroupByChange(event.target.value as CatalogGroupBy)
+              }
+              value={groupBy}
+            >
+              <option value="folder">Folder</option>
+              <option value="tag">Tag</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          {groupBy !== "none" && groupedBooks.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-lg border border-stone-700 px-2 py-1.5 text-xs text-stone-400 hover:border-amber-500 hover:text-stone-200"
+                onClick={() =>
+                  setCollapsedGroups(
+                    Object.fromEntries(
+                      groupedBooks.map((group) => [group.label, true]),
+                    ),
+                  )
+                }
+                type="button"
+              >
+                Collapse all
+              </button>
+              <button
+                className="rounded-lg border border-stone-700 px-2 py-1.5 text-xs text-stone-400 hover:border-amber-500 hover:text-stone-200"
+                onClick={() =>
+                  setCollapsedGroups(
+                    Object.fromEntries(
+                      groupedBooks.map((group) => [group.label, false]),
+                    ),
+                  )
+                }
+                type="button"
+              >
+                Expand all
+              </button>
+            </div>
+          )}
+          {groupBy === "tag" && (
+            <span className="text-xs text-stone-500">
+              Books with multiple tags appear in each matching group.
+            </span>
+          )}
+        </div>
       </div>
 
       {progress && (
@@ -3343,23 +3616,73 @@ function LibraryWorkspace({
             : "No supported books found yet. Try a rescan."}
         </div>
       ) : (
-        <div className={view === "grid" ? "book-grid mt-7" : "mt-7 space-y-2"}>
-          {books.map((book) => (
-            <BookCard
-              book={book}
-              isOpening={openingBookId === book.id}
-              key={book.id}
-              onEdit={() => onEditBook(book)}
-              onDetail={() => onOpenDetail(book)}
-              onOpen={() => onOpenBook(book)}
-              onReadStudy={() => onReadStudy(book)}
-              onRelink={() => onRelinkBook(book)}
-              view={view}
-            />
-          ))}
+        <div className="mt-7 space-y-8">
+          {groupedBooks.map((group, groupIndex) => {
+            const collapsed = collapsedGroups[group.label] ?? false;
+            const groupId = `catalog-group-${groupIndex}`;
+            return (
+            <section key={group.label}>
+              {groupBy !== "none" && (
+                <button
+                  aria-controls={groupId}
+                  aria-expanded={!collapsed}
+                  className="mb-3 flex w-full items-baseline justify-between gap-4 border-b border-stone-800 pb-2 text-left"
+                  onClick={() =>
+                    setCollapsedGroups((current) => ({
+                      ...current,
+                      [group.label]: !collapsed,
+                    }))
+                  }
+                  type="button"
+                >
+                  <span className="flex items-center gap-2">
+                    <span aria-hidden="true" className="text-xs text-amber-400">
+                      {collapsed ? "▸" : "▾"}
+                    </span>
+                    <span className="text-sm font-semibold text-stone-200">
+                      {group.label}
+                    </span>
+                  </span>
+                  <span className="text-xs text-stone-500">
+                    {group.books.length} {group.books.length === 1 ? "book" : "books"}
+                  </span>
+                </button>
+              )}
+              {(groupBy === "none" || !collapsed) && (
+                <div
+                  className={view === "grid" ? "book-grid" : "space-y-2"}
+                  id={groupId}
+                >
+                  {group.books.map((book) => (
+                    <BookCard
+                      book={book}
+                      isOpening={openingBookId === book.id}
+                      key={`${group.label}-${book.id}`}
+                      onEdit={() => onEditBook(book)}
+                      onDetail={() => onOpenDetail(book)}
+                      onOpen={() => onOpenBook(book)}
+                      onReadStudy={() => onReadStudy(book)}
+                      onRelink={() => onRelinkBook(book)}
+                      onToggleSelection={() => onToggleBookSelection(book.id)}
+                      selected={selectedBookIds.includes(book.id)}
+                      view={view}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+            );
+          })}
         </div>
       )}
     </>
+  );
+}
+
+export function collectBookTags(books: Array<Pick<Book, "tags">>): string[] {
+  return Array.from(new Set(books.flatMap((book) => book.tags))).sort(
+    (left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: "base" }),
   );
 }
 
@@ -3371,6 +3694,8 @@ function BookCard({
   onOpen,
   onReadStudy,
   onRelink,
+  onToggleSelection,
+  selected,
   view,
 }: {
   book: Book;
@@ -3380,6 +3705,8 @@ function BookCard({
   onOpen: () => void;
   onReadStudy: () => void;
   onRelink: () => void;
+  onToggleSelection: () => void;
+  selected: boolean;
   view: "grid" | "list";
 }) {
   const canOpen =
@@ -3395,7 +3722,18 @@ function BookCard({
     .join(" · ");
   if (view === "list") {
     return (
-      <article className="book-virtual-row relative flex items-center gap-4 rounded-lg border border-stone-800 bg-stone-900/50 p-3">
+      <article
+        className={`book-virtual-row relative flex items-center gap-4 rounded-lg border bg-stone-900/50 p-3 ${
+          selected ? "border-amber-500/80" : "border-stone-800"
+        }`}
+      >
+        <input
+          aria-label={`Select ${book.title}`}
+          checked={selected}
+          className="ml-1 shrink-0 accent-amber-500"
+          onChange={onToggleSelection}
+          type="checkbox"
+        />
         <button
           aria-label={`View details for ${book.title}`}
           className="shrink-0 rounded-md text-left outline-none ring-amber-500 focus-visible:ring-2"
@@ -3430,7 +3768,20 @@ function BookCard({
     );
   }
   return (
-    <article className="book-virtual-card group relative flex h-full min-w-0 flex-col">
+    <article
+      className={`book-virtual-card group relative flex h-full min-w-0 flex-col ${
+        selected
+          ? "rounded-xl ring-2 ring-amber-500/80 ring-offset-2 ring-offset-stone-950"
+          : ""
+      }`}
+    >
+      <input
+        aria-label={`Select ${book.title}`}
+        checked={selected}
+        className="absolute left-2 top-2 z-20 h-4 w-4 accent-amber-500"
+        onChange={onToggleSelection}
+        type="checkbox"
+      />
       <button
         aria-label={`View details for ${book.title}`}
         className="rounded-md text-left outline-none ring-amber-500 transition enabled:hover:brightness-110 focus-visible:ring-2"
@@ -3626,6 +3977,40 @@ export function isValidBookDisplayTitle(title: string): boolean {
   );
 }
 
+export interface CatalogBookGroup {
+  label: string;
+  books: Book[];
+}
+
+export function groupCatalogBooks(
+  books: Book[],
+  groupBy: CatalogGroupBy,
+): CatalogBookGroup[] {
+  if (groupBy === "none") return [{ label: "All books", books }];
+
+  const groups = new Map<string, Book[]>();
+  for (const book of books) {
+    const labels =
+      groupBy === "folder"
+        ? [book.relativePath.split("/")[0] || "Root"]
+        : book.tags.length > 0
+          ? book.tags
+          : ["No tag"];
+    for (const label of labels) {
+      const group = groups.get(label);
+      if (group) group.push(book);
+      else groups.set(label, [book]);
+    }
+  }
+
+  return Array.from(groups, ([label, groupedBooks]) => ({
+    label,
+    books: groupedBooks,
+  })).sort((left, right) =>
+    left.label.localeCompare(right.label, undefined, { sensitivity: "base" }),
+  );
+}
+
 export function filterCatalogBooks(books: Book[], query: string): Book[] {
   const terms = query
     .normalize("NFKC")
@@ -3637,7 +4022,7 @@ export function filterCatalogBooks(books: Book[], query: string): Book[] {
 
   return books.filter((book) => {
     const kind = book.kind === "pdf_file" ? "pdf" : "images image folder";
-    const searchable = `${book.title} ${book.relativePath} ${kind} ${book.status}`
+    const searchable = `${book.title} ${book.relativePath} ${kind} ${book.status} ${book.tags.join(" ")}`
       .normalize("NFKC")
       .toLocaleLowerCase();
     return terms.every((term) => searchable.includes(term));

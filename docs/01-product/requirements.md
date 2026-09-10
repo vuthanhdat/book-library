@@ -25,9 +25,13 @@ Functional requirements:
 - Filter the visible local catalog in real time by title, path, kind, and
   status; retain missing-source records for recovery but hide them from the
   default catalog.
+- Group the visible catalog by tag or folder, with collapsible groups and
+  controls to collapse or expand all groups at once.
 - Edit an app-local display title without renaming or rewriting the source book.
+- Select multiple catalog books and add an existing book tag in one operation.
 - Store metadata and rebuildable search indexes in SQLite when required.
-- Create and edit Markdown notes associated with books and topics.
+- Create and edit Markdown notes associated with exactly one book. Notes are
+  grouped by book; standalone managed notes are not part of the core workflow.
 - Support Obsidian-compatible links and relative paths.
 - Provide offline full-text search using SQLite FTS5.
 - Provide optional OCR, dictionary, AI assistant, and Anki export modules.
@@ -40,6 +44,7 @@ Non-functional requirements:
 - Start quickly for existing indexed libraries.
 - Recover from deleted or corrupt SQLite database by rescanning.
 - Handle large libraries incrementally.
+- Use the full available desktop viewport for the application shell and catalog.
 - Avoid destructive filesystem actions.
 - Keep UI responsive during scanning and indexing.
 - Preserve normalized relative path spelling and Unicode; do not use unconditional lowercasing as cross-platform identity.

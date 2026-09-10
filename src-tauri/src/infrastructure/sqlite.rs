@@ -12,7 +12,7 @@ use crate::{
         AiDraft, ApplicationError, BookDetailError, BookDetailRecord, BookDetailRepository,
         BookListItem, BookLocationRepository, BookMetadataError, BookMetadataRepository,
         BookPageSource, BookRelocationError, BookRelocationRepository, BookSourceLocation,
-        BookThumbnailTarget, CatalogReconciliation, DatabaseHealth, DictionaryEntry,
+        BookTagUpdate, BookThumbnailTarget, CatalogReconciliation, DatabaseHealth, DictionaryEntry,
         DictionaryImportSummary, DiscoveredBook, LearningDraft, LibraryConfiguration,
         LibraryConfigurationState, LibraryError, LibraryRepository, LinkedBookNote, NoteBacklink,
         NoteDetail, NoteListItem, NoteProjection, NoteRecord, NotesConfiguration, NotesError,
@@ -374,6 +374,14 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         ) STRICT;
     "#,
     ),
+    (
+        7,
+        "book_scoped_notes",
+        r#"
+        DELETE FROM notes
+        WHERE id NOT IN (SELECT note_id FROM book_note_links);
+    "#,
+    ),
 ];
 
 #[derive(Debug, Error)]
@@ -635,30 +643,27 @@ impl SqliteDatabase {
                 )
                 .map_err(|_| NotesError::RepositoryFailed)?;
         }
-        if let Some(book_path) = &note.book_relative_path {
-            let path_key = if cfg!(target_os = "windows") {
-                book_path.as_str().to_lowercase()
-            } else {
-                book_path.as_str().to_owned()
-            };
-            if let Some(book_id) = transaction
-                .query_row(
-                    "SELECT id FROM books WHERE path_key = ?1 LIMIT 1",
-                    [path_key],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(|_| NotesError::RepositoryFailed)?
-            {
-                transaction
-                    .execute(
-                        "INSERT INTO book_note_links (note_id, book_id)
-                         VALUES (?1, ?2)",
-                        params![note_id.to_string(), book_id],
-                    )
-                    .map_err(|_| NotesError::RepositoryFailed)?;
-            }
-        }
+        let path_key = if cfg!(target_os = "windows") {
+            note.book_relative_path.as_str().to_lowercase()
+        } else {
+            note.book_relative_path.as_str().to_owned()
+        };
+        let book_id = transaction
+            .query_row(
+                "SELECT id FROM books WHERE path_key = ?1 LIMIT 1",
+                [path_key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|_| NotesError::RepositoryFailed)?
+            .ok_or(NotesError::BookNotFound)?;
+        transaction
+            .execute(
+                "INSERT INTO book_note_links (note_id, book_id)
+                 VALUES (?1, ?2)",
+                params![note_id.to_string(), book_id],
+            )
+            .map_err(|_| NotesError::RepositoryFailed)?;
         for (index, heading) in note.headings.iter().enumerate() {
             transaction
                 .execute(
@@ -1048,9 +1053,13 @@ impl LibraryRepository for SqliteDatabase {
             .map_err(|_| LibraryError::CatalogFailed)?;
         let mut statement = connection
             .prepare(
-                "SELECT id, title, kind, relative_path, status, page_count,
-                        size_bytes, modified_at_ms, thumbnail_cache_path, thumbnail_status
+                "SELECT books.id, books.title, books.kind, books.relative_path, books.status,
+                        books.page_count, books.size_bytes, books.modified_at_ms,
+                        books.thumbnail_cache_path, books.thumbnail_status,
+                        COALESCE(GROUP_CONCAT(book_tags.tag, ' '), '')
                  FROM books
+                 LEFT JOIN book_tags ON book_tags.book_id = books.id
+                 GROUP BY books.id
                  ORDER BY relative_path COLLATE NOCASE, title COLLATE NOCASE",
             )
             .map_err(|_| LibraryError::CatalogFailed)?;
@@ -1069,6 +1078,11 @@ impl LibraryRepository for SqliteDatabase {
                     modified_at_ms: row.get(7)?,
                     thumbnail_cache_path: row.get(8)?,
                     thumbnail_status: row.get(9)?,
+                    tags: row
+                        .get::<_, String>(10)?
+                        .split_whitespace()
+                        .map(str::to_owned)
+                        .collect(),
                 })
             })
             .map_err(|_| LibraryError::CatalogFailed)?;
@@ -1448,6 +1462,85 @@ impl BookDetailRepository for SqliteDatabase {
         Ok(true)
     }
 
+    fn add_tag_to_books(
+        &self,
+        book_ids: &[BookId],
+        tag: &str,
+    ) -> Result<Vec<BookTagUpdate>, BookDetailError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+
+        for book_id in book_ids {
+            let exists: bool = transaction
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM books WHERE id = ?1)",
+                    [book_id.to_string()],
+                    |row| row.get(0),
+                )
+                .map_err(|_| BookDetailError::RepositoryFailed)?;
+            if !exists {
+                return Err(BookDetailError::BookNotFound);
+            }
+        }
+
+        let mut updates = Vec::with_capacity(book_ids.len());
+        for book_id in book_ids {
+            let book_id_text = book_id.to_string();
+            let already_present: bool = transaction
+                .query_row(
+                    "SELECT EXISTS(
+                       SELECT 1 FROM book_tags WHERE book_id = ?1 AND tag = ?2
+                     )",
+                    params![book_id_text, tag],
+                    |row| row.get(0),
+                )
+                .map_err(|_| BookDetailError::RepositoryFailed)?;
+            if !already_present {
+                let tag_count: i64 = transaction
+                    .query_row(
+                        "SELECT COUNT(*) FROM book_tags WHERE book_id = ?1",
+                        [&book_id_text],
+                        |row| row.get(0),
+                    )
+                    .map_err(|_| BookDetailError::RepositoryFailed)?;
+                if tag_count >= 100 {
+                    return Err(BookDetailError::InvalidTags);
+                }
+                transaction
+                    .execute(
+                        "INSERT INTO book_tags (book_id, tag) VALUES (?1, ?2)",
+                        params![book_id_text, tag],
+                    )
+                    .map_err(|_| BookDetailError::RepositoryFailed)?;
+            }
+
+            let mut statement = transaction
+                .prepare(
+                    "SELECT tag FROM book_tags
+                     WHERE book_id = ?1 ORDER BY tag COLLATE NOCASE",
+                )
+                .map_err(|_| BookDetailError::RepositoryFailed)?;
+            let tags = statement
+                .query_map([&book_id_text], |row| row.get(0))
+                .map_err(|_| BookDetailError::RepositoryFailed)?
+                .collect::<Result<Vec<String>, _>>()
+                .map_err(|_| BookDetailError::RepositoryFailed)?;
+            updates.push(BookTagUpdate {
+                book_id: book_id_text,
+                tags,
+            });
+        }
+        transaction
+            .commit()
+            .map_err(|_| BookDetailError::RepositoryFailed)?;
+        Ok(updates)
+    }
+
     fn book_thumbnail_target(
         &self,
         book_id: BookId,
@@ -1712,9 +1805,9 @@ impl NotesRepository for SqliteDatabase {
             .map_err(|_| NotesError::RepositoryFailed)?;
         let mut added = 0;
         let mut updated = 0;
+        let mut issues = issues;
         let mut seen = std::collections::HashSet::new();
         for note in notes {
-            seen.insert(note.path_key.clone());
             let previous: Option<(String, String)> = transaction
                 .query_row(
                     "SELECT fingerprint, status FROM notes WHERE path_key = ?1",
@@ -1723,16 +1816,22 @@ impl NotesRepository for SqliteDatabase {
                 )
                 .optional()
                 .map_err(|_| NotesError::RepositoryFailed)?;
-            match previous {
-                None => added += 1,
-                Some((fingerprint, status))
-                    if fingerprint != note.fingerprint || status != "available" =>
-                {
-                    updated += 1;
+            match Self::upsert_note_projection(&transaction, note) {
+                Ok(_) => {
+                    seen.insert(note.path_key.clone());
+                    match previous {
+                        None => added += 1,
+                        Some((fingerprint, status))
+                            if fingerprint != note.fingerprint || status != "available" =>
+                        {
+                            updated += 1;
+                        }
+                        Some(_) => {}
+                    }
                 }
-                Some(_) => {}
+                Err(NotesError::BookNotFound | NotesError::BookRequired) => issues += 1,
+                Err(error) => return Err(error),
             }
-            Self::upsert_note_projection(&transaction, note)?;
         }
         let known = {
             let mut statement = transaction
@@ -1809,7 +1908,7 @@ impl NotesRepository for SqliteDatabase {
             .transpose()
     }
 
-    fn book_relative_path(&self, book_id: BookId) -> Result<Option<RelativePath>, NotesError> {
+    fn book_relative_path(&self, book_id: BookId) -> Result<RelativePath, NotesError> {
         let connection = self
             .connection
             .lock()
@@ -1823,7 +1922,8 @@ impl NotesRepository for SqliteDatabase {
             .optional()
             .map_err(|_| NotesError::RepositoryFailed)?;
         path.map(|value| RelativePath::new(value).map_err(|_| NotesError::RepositoryFailed))
-            .transpose()
+            .transpose()?
+            .ok_or(NotesError::BookNotFound)
     }
 
     fn list_notes(&self) -> Result<Vec<NoteListItem>, NotesError> {
@@ -1836,8 +1936,8 @@ impl NotesRepository for SqliteDatabase {
                 "SELECT notes.id, notes.title, notes.relative_path, notes.status,
                         books.id, books.title, notes.modified_at_ms
                  FROM notes
-                 LEFT JOIN book_note_links ON book_note_links.note_id = notes.id
-                 LEFT JOIN books ON books.id = book_note_links.book_id
+                 JOIN book_note_links ON book_note_links.note_id = notes.id
+                 JOIN books ON books.id = book_note_links.book_id
                  ORDER BY notes.title COLLATE NOCASE, notes.relative_path",
             )
             .map_err(|_| NotesError::RepositoryFailed)?;
@@ -1867,12 +1967,12 @@ impl NotesRepository for SqliteDatabase {
             .connection
             .lock()
             .map_err(|_| NotesError::RepositoryFailed)?;
-        let base: Option<(String, String, Option<String>, Option<String>)> = connection
+        let base: Option<(String, String, String, String)> = connection
             .query_row(
                 "SELECT notes.title, notes.relative_path, books.id, books.title
                  FROM notes
-                 LEFT JOIN book_note_links ON book_note_links.note_id = notes.id
-                 LEFT JOIN books ON books.id = book_note_links.book_id
+                 JOIN book_note_links ON book_note_links.note_id = notes.id
+                 JOIN books ON books.id = book_note_links.book_id
                  WHERE notes.id = ?1",
                 [note_id.to_string()],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
@@ -1911,6 +2011,26 @@ impl NotesRepository for SqliteDatabase {
             book_title,
             backlinks,
         }))
+    }
+
+    fn delete_note(&self, note_id: NoteId) -> Result<(), NotesError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        let deleted = transaction
+            .execute("DELETE FROM notes WHERE id = ?1", [note_id.to_string()])
+            .map_err(|_| NotesError::RepositoryFailed)?;
+        if deleted != 1 {
+            return Err(NotesError::NoteNotFound);
+        }
+        Self::resolve_note_links(&transaction)?;
+        transaction
+            .commit()
+            .map_err(|_| NotesError::RepositoryFailed)
     }
 }
 
@@ -2679,8 +2799,8 @@ impl SearchRepository for SqliteDatabase {
                     "SELECT notes.id, notes.title, notes.relative_path, notes.status,
                             COALESCE(books.title, '')
                      FROM notes
-                     LEFT JOIN book_note_links ON book_note_links.note_id = notes.id
-                     LEFT JOIN books ON books.id = book_note_links.book_id
+                     JOIN book_note_links ON book_note_links.note_id = notes.id
+                     JOIN books ON books.id = book_note_links.book_id
                      ORDER BY notes.title, notes.relative_path",
                 )
                 .map_err(|_| SearchError::IndexUnavailable)?;
@@ -2708,7 +2828,9 @@ impl SearchRepository for SqliteDatabase {
                     "SELECT notes.id, notes.title, notes.relative_path, notes.status,
                             note_headings.text
                      FROM note_headings
-                     JOIN notes ON notes.id = note_headings.note_id",
+                     JOIN notes ON notes.id = note_headings.note_id
+                     JOIN book_note_links ON book_note_links.note_id = notes.id
+                     JOIN books ON books.id = book_note_links.book_id",
                 )
                 .map_err(|_| SearchError::IndexUnavailable)?;
             let rows = statement
@@ -2735,7 +2857,9 @@ impl SearchRepository for SqliteDatabase {
                     "SELECT notes.id, notes.title, notes.relative_path, notes.status,
                             note_tags.tag
                      FROM note_tags
-                     JOIN notes ON notes.id = note_tags.note_id",
+                     JOIN notes ON notes.id = note_tags.note_id
+                     JOIN book_note_links ON book_note_links.note_id = notes.id
+                     JOIN books ON books.id = book_note_links.book_id",
                 )
                 .map_err(|_| SearchError::IndexUnavailable)?;
             let rows = statement
@@ -2960,10 +3084,10 @@ mod tests {
     use crate::{
         application::{
             CancellationToken, DiscoveredBook, ExternalPathOpener, LibraryRepository, NotesError,
-            NotesWorkspace, ReconcileCatalog, ScanResult, SearchLibrary, ThumbnailGenerator,
-            ThumbnailOutcome,
+            NotesWorkspace, ReconcileCatalog, ScanReason, ScanResult, SearchLibrary,
+            ThumbnailGenerator, ThumbnailOutcome,
         },
-        domain::{BookId, BookKind, ContentFingerprint, NoteId, RelativePath},
+        domain::{BookId, BookKind, BookStatus, ContentFingerprint, NoteId, RelativePath},
         infrastructure::{FilesystemScanner, MarkdownNotesStore},
     };
     use std::{
@@ -2992,6 +3116,44 @@ mod tests {
         ) -> Result<ThumbnailOutcome, LibraryError> {
             Err(LibraryError::ThumbnailFailed)
         }
+    }
+
+    fn seed_test_book(database: &SqliteDatabase, library_root: &Path) -> BookId {
+        let configuration = database
+            .save_configuration(library_root, "Library")
+            .unwrap();
+        let relative_path = RelativePath::new("Shelf/Book.pdf").unwrap();
+        let discovered = DiscoveredBook {
+            kind: BookKind::PdfFile,
+            status: BookStatus::Available,
+            path_key: if cfg!(target_os = "windows") {
+                relative_path.as_str().to_lowercase()
+            } else {
+                relative_path.as_str().to_owned()
+            },
+            title: "Book".to_owned(),
+            fingerprint: ContentFingerprint::new("pdf:test-book").unwrap(),
+            relative_path,
+            size_bytes: Some(1),
+            modified_at_ms: Some(1),
+            page_count: Some(1),
+            image_pages: Vec::new(),
+        };
+        let job = database
+            .start_scan(configuration.id, ScanReason::Initial)
+            .unwrap();
+        database
+            .reconcile(
+                configuration.id,
+                &job,
+                &ScanResult {
+                    books: vec![discovered],
+                    issues: Vec::new(),
+                    cancelled: false,
+                },
+            )
+            .unwrap();
+        BookId::parse(&database.list_books().unwrap()[0].id).unwrap()
     }
 
     #[test]
@@ -3445,6 +3607,13 @@ mod tests {
         let detail = database.book_detail(book_id).unwrap().unwrap();
         assert_eq!(detail.reading_status, "reading");
         assert_eq!(detail.tags, ["psychology", "心理学"]);
+        assert_eq!(
+            database.list_books().unwrap()[0].tags,
+            ["psychology", "心理学"]
+        );
+        let tag_updates = database.add_tag_to_books(&[book_id], "to-read").unwrap();
+        assert_eq!(tag_updates[0].book_id, book_id.to_string());
+        assert_eq!(tag_updates[0].tags, ["psychology", "to-read", "心理学"]);
         let markdown = MarkdownNotesStore::new();
         let search = SearchLibrary::new(&database, &markdown);
         search.rebuild().unwrap();
@@ -3468,7 +3637,7 @@ mod tests {
         assert_eq!(database.list_books().unwrap()[0].status, "missing");
         let preserved = database.book_detail(book_id).unwrap().unwrap();
         assert_eq!(preserved.reading_status, "reading");
-        assert_eq!(preserved.tags, ["psychology", "心理学"]);
+        assert_eq!(preserved.tags, ["psychology", "to-read", "心理学"]);
     }
 
     #[test]
@@ -3603,15 +3772,17 @@ mod tests {
     #[test]
     fn markdown_notes_round_trip_and_resolve_backlinks() {
         let app_data = TempDir::new().unwrap();
+        let library = TempDir::new().unwrap();
         let notes_root = TempDir::new().unwrap();
         let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let book_id = seed_test_book(&database, library.path());
         let markdown = MarkdownNotesStore::new();
         let opener = NoopExternalOpener;
         let workspace = NotesWorkspace::new(&database, &markdown, &opener);
 
         workspace.configure(notes_root.path()).unwrap();
-        let first = workspace.create("First note", None).unwrap();
-        let second = workspace.create("Second note", None).unwrap();
+        let first = workspace.create("First note", book_id).unwrap();
+        let second = workspace.create("Second note", book_id).unwrap();
         let second_id = NoteId::parse(&second.id).unwrap();
         workspace
             .save(second_id, "# Second note\n\nLinks to [[First note]].\n")
@@ -3624,8 +3795,8 @@ mod tests {
         assert_eq!(detail.backlinks.len(), 1);
         assert_eq!(detail.backlinks[0].title, "Second note");
         assert_eq!(
-            fs::read_to_string(notes_root.path().join(second.relative_path)).unwrap(),
-            "# Second note\n\nLinks to [[First note]].\n"
+            fs::read_to_string(notes_root.path().join(&second.relative_path)).unwrap(),
+            "---\nbook_relative_path: \"Shelf/Book.pdf\"\n---\n\n# Second note\n\nLinks to [[First note]].\n"
         );
 
         workspace
@@ -3645,6 +3816,78 @@ mod tests {
         );
         assert_eq!(search.execute("心理学", Some("tags")).unwrap().len(), 1);
         assert!(search.diagnostics().unwrap().documents >= 4);
+
+        workspace
+            .delete(NoteId::parse(&second.id).unwrap())
+            .unwrap();
+        assert!(!notes_root.path().join(&second.relative_path).exists());
+        assert!(
+            database
+                .list_notes()
+                .unwrap()
+                .iter()
+                .all(|note| note.id != second.id)
+        );
+    }
+
+    #[test]
+    fn missing_note_projection_can_be_removed_without_a_markdown_file() {
+        let app_data = TempDir::new().unwrap();
+        let library = TempDir::new().unwrap();
+        let notes_root = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let book_id = seed_test_book(&database, library.path());
+        let markdown = MarkdownNotesStore::new();
+        let opener = NoopExternalOpener;
+        let workspace = NotesWorkspace::new(&database, &markdown, &opener);
+
+        workspace.configure(notes_root.path()).unwrap();
+        let note = workspace.create("Missing note", book_id).unwrap();
+        fs::remove_file(notes_root.path().join(&note.relative_path)).unwrap();
+
+        let refreshed = workspace.refresh().unwrap();
+        assert_eq!(refreshed.missing, 1);
+        assert_eq!(
+            database
+                .list_notes()
+                .unwrap()
+                .iter()
+                .find(|item| item.id == note.id)
+                .map(|item| item.status.as_str()),
+            Some("missing")
+        );
+
+        workspace.delete(NoteId::parse(&note.id).unwrap()).unwrap();
+        assert!(
+            database
+                .list_notes()
+                .unwrap()
+                .iter()
+                .all(|item| item.id != note.id)
+        );
+    }
+
+    #[test]
+    fn refresh_does_not_import_a_loose_markdown_file_without_a_book() {
+        let app_data = TempDir::new().unwrap();
+        let library = TempDir::new().unwrap();
+        let notes_root = TempDir::new().unwrap();
+        let database = SqliteDatabase::initialize(app_data.path()).unwrap();
+        let book_id = seed_test_book(&database, library.path());
+        let markdown = MarkdownNotesStore::new();
+        let opener = NoopExternalOpener;
+        let workspace = NotesWorkspace::new(&database, &markdown, &opener);
+
+        workspace.configure(notes_root.path()).unwrap();
+        let linked = workspace.create("Linked note", book_id).unwrap();
+        fs::write(notes_root.path().join("Loose note.md"), "# Loose note\n").unwrap();
+
+        let refreshed = workspace.refresh().unwrap();
+        assert_eq!(refreshed.discovered, 1);
+        assert_eq!(refreshed.issues, 1);
+        assert_eq!(database.list_notes().unwrap().len(), 1);
+        assert_eq!(database.list_notes().unwrap()[0].id, linked.id);
+        assert!(notes_root.path().join("Loose note.md").is_file());
     }
 
     #[test]
@@ -3693,10 +3936,10 @@ mod tests {
         let opener = NoopExternalOpener;
         let workspace = NotesWorkspace::new(&database, &markdown, &opener);
         workspace.configure(notes_root.path()).unwrap();
-        let note = workspace.create("Book note", Some(book_id)).unwrap();
+        let note = workspace.create("Book note", book_id).unwrap();
 
-        assert_eq!(note.book_id, Some(book_id.to_string()));
-        assert_eq!(note.book_title.as_deref(), Some("Book"));
+        assert_eq!(note.book_id, book_id.to_string());
+        assert_eq!(note.book_title, "Book");
         assert!(
             fs::read_to_string(notes_root.path().join(&note.relative_path))
                 .unwrap()

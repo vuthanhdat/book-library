@@ -22,10 +22,14 @@ pub(crate) enum NotesError {
     InvalidBody,
     #[error("the requested book does not exist")]
     BookNotFound,
+    #[error("a note must be linked to a book")]
+    BookRequired,
     #[error("the Markdown file could not be read")]
     ReadFailed,
     #[error("the Markdown file could not be saved")]
     WriteFailed,
+    #[error("the Markdown file could not be deleted")]
+    DeleteFailed,
     #[error("the notes projection could not be saved")]
     RepositoryFailed,
     #[error("the external application could not be opened")]
@@ -58,7 +62,7 @@ pub(crate) struct NoteProjection {
     pub(crate) fingerprint: String,
     pub(crate) size_bytes: u64,
     pub(crate) modified_at_ms: Option<i64>,
-    pub(crate) book_relative_path: Option<RelativePath>,
+    pub(crate) book_relative_path: RelativePath,
     pub(crate) headings: Vec<ParsedHeading>,
     pub(crate) tags: Vec<String>,
     pub(crate) links: Vec<ParsedNoteLink>,
@@ -76,8 +80,8 @@ pub(crate) struct NoteListItem {
     pub(crate) title: String,
     pub(crate) relative_path: String,
     pub(crate) status: String,
-    pub(crate) book_id: Option<String>,
-    pub(crate) book_title: Option<String>,
+    pub(crate) book_id: String,
+    pub(crate) book_title: String,
     pub(crate) modified_at_ms: Option<i64>,
 }
 
@@ -94,8 +98,8 @@ pub(crate) struct NoteDetail {
     pub(crate) title: String,
     pub(crate) relative_path: String,
     pub(crate) body: String,
-    pub(crate) book_id: Option<String>,
-    pub(crate) book_title: Option<String>,
+    pub(crate) book_id: String,
+    pub(crate) book_title: String,
     pub(crate) backlinks: Vec<NoteBacklink>,
 }
 
@@ -118,13 +122,14 @@ pub(crate) trait NotesRepository {
     ) -> Result<NotesRefreshSummary, NotesError>;
     fn upsert_note(&self, note: &NoteProjection) -> Result<NoteId, NotesError>;
     fn note_record(&self, note_id: NoteId) -> Result<Option<NoteRecord>, NotesError>;
-    fn book_relative_path(&self, book_id: BookId) -> Result<Option<RelativePath>, NotesError>;
+    fn book_relative_path(&self, book_id: BookId) -> Result<RelativePath, NotesError>;
     fn list_notes(&self) -> Result<Vec<NoteListItem>, NotesError>;
     fn note_detail_projection(
         &self,
         note_id: NoteId,
         body: String,
     ) -> Result<Option<NoteDetail>, NotesError>;
+    fn delete_note(&self, note_id: NoteId) -> Result<(), NotesError>;
 }
 
 pub(crate) trait MarkdownNotes {
@@ -133,7 +138,7 @@ pub(crate) trait MarkdownNotes {
         &self,
         root: &Path,
         title: &str,
-        book_relative_path: Option<&RelativePath>,
+        book_relative_path: &RelativePath,
     ) -> Result<(NoteProjection, String), NotesError>;
     fn read(&self, root: &Path, relative_path: &RelativePath) -> Result<String, NotesError>;
     fn save(
@@ -142,6 +147,7 @@ pub(crate) trait MarkdownNotes {
         relative_path: &RelativePath,
         body: &str,
     ) -> Result<NoteProjection, NotesError>;
+    fn delete(&self, root: &Path, relative_path: &RelativePath) -> Result<(), NotesError>;
     fn resolve(&self, root: &Path, relative_path: &RelativePath) -> Result<PathBuf, NotesError>;
 }
 
@@ -199,23 +205,13 @@ where
         self.repository.list_notes()
     }
 
-    pub(crate) fn create(
-        &self,
-        title: &str,
-        book_id: Option<BookId>,
-    ) -> Result<NoteDetail, NotesError> {
+    pub(crate) fn create(&self, title: &str, book_id: BookId) -> Result<NoteDetail, NotesError> {
         let title = validate_title(title)?;
         let configuration = self.configuration()?.ok_or(NotesError::NotConfigured)?;
-        let book_path = book_id
-            .map(|id| {
-                self.repository
-                    .book_relative_path(id)?
-                    .ok_or(NotesError::BookNotFound)
-            })
-            .transpose()?;
-        let (projection, body) =
-            self.markdown
-                .create(&configuration.root, title, book_path.as_ref())?;
+        let book_path = self.repository.book_relative_path(book_id)?;
+        let (projection, body) = self
+            .markdown
+            .create(&configuration.root, title, &book_path)?;
         let note_id = self.repository.upsert_note(&projection)?;
         self.repository
             .note_detail_projection(note_id, body)?
@@ -253,6 +249,19 @@ where
             .save(&configuration.root, &record.relative_path, body)?;
         self.repository.upsert_note(&projection)?;
         self.read(note_id)
+    }
+
+    pub(crate) fn delete(&self, note_id: NoteId) -> Result<(), NotesError> {
+        let configuration = self.configuration()?.ok_or(NotesError::NotConfigured)?;
+        let record = self
+            .repository
+            .note_record(note_id)?
+            .ok_or(NotesError::NoteNotFound)?;
+        if record.status == "available" {
+            self.markdown
+                .delete(&configuration.root, &record.relative_path)?;
+        }
+        self.repository.delete_note(note_id)
     }
 
     pub(crate) fn open_note(&self, note_id: NoteId) -> Result<(), NotesError> {

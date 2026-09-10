@@ -11,6 +11,10 @@ frontmatter behavior, and external-change reconciliation.
 
 ## Decision
 
+The book-association and file-layout portions of this decision are superseded
+by [ADR-018](ADR-018-book-scoped-notes.md). The notes root, Markdown
+ownership, and projection rules below remain in force.
+
 The notes root is one machine-local user-selected directory. It may be inside or
 outside the library root. Note identities persisted in SQLite are normalized
 paths relative to that configured notes root.
@@ -32,7 +36,8 @@ book_relative_path: "Shelf/Book.pdf"
 ```
 
 `book_relative_path` is portable catalog identity. App-specific book UUIDs are
-not written into Markdown. Notes without frontmatter remain valid general notes.
+not written into Markdown. Managed notes require the `book_relative_path`
+frontmatter association.
 
 Projection refresh recursively discovers `.md` files without following
 symlinks. It parses:

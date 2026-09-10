@@ -47,8 +47,7 @@ impl MarkdownNotesStore {
                     .map(str::to_owned)
             })
             .unwrap_or_else(|| "Untitled note".to_owned());
-        let book_relative_path = parse_frontmatter_value(body, "book_relative_path")
-            .and_then(|value| RelativePath::new(value).ok());
+        let book_relative_path = parse_book_relative_path(body)?;
         let path_key = if cfg!(target_os = "windows") {
             relative_path.as_str().to_lowercase()
         } else {
@@ -137,6 +136,48 @@ impl MarkdownNotesStore {
         name.chars().take(100).collect()
     }
 
+    fn book_notes_directory(
+        root: &Path,
+        book_relative_path: &RelativePath,
+    ) -> Result<PathBuf, NotesError> {
+        let root = root
+            .canonicalize()
+            .map_err(|_| NotesError::RootUnavailable)?;
+        let source_path = Path::new(book_relative_path.as_str());
+        let mut relative_directory = PathBuf::new();
+        if let Some(parent) = source_path.parent() {
+            relative_directory.push(parent);
+        }
+        let book_directory_name = source_path.file_name().ok_or(NotesError::InvalidNotePath)?;
+        relative_directory.push(book_directory_name);
+
+        let mut directory = root.clone();
+        for component in relative_directory.components() {
+            let std::path::Component::Normal(segment) = component else {
+                return Err(NotesError::InvalidNotePath);
+            };
+            directory.push(segment);
+            match fs::symlink_metadata(&directory) {
+                Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                    return Err(NotesError::InvalidNotePath);
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    fs::create_dir(&directory).map_err(|_| NotesError::WriteFailed)?;
+                }
+                Err(_) => return Err(NotesError::WriteFailed),
+            }
+        }
+
+        let canonical = directory
+            .canonicalize()
+            .map_err(|_| NotesError::InvalidNotePath)?;
+        if !canonical.starts_with(&root) {
+            return Err(NotesError::InvalidNotePath);
+        }
+        Ok(canonical)
+    }
+
     fn write_new(path: &Path, body: &str) -> Result<(), NotesError> {
         let mut file = fs::OpenOptions::new()
             .create_new(true)
@@ -204,21 +245,18 @@ impl MarkdownNotes for MarkdownNotesStore {
         &self,
         root: &Path,
         title: &str,
-        book_relative_path: Option<&RelativePath>,
+        book_relative_path: &RelativePath,
     ) -> Result<(NoteProjection, String), NotesError> {
         let suffix = &uuid::Uuid::new_v4().to_string()[..8];
-        let path = root.join(format!("{}-{suffix}.md", Self::safe_filename(title)));
-        let body = if let Some(book_path) = book_relative_path {
-            format!(
-                "---\nbook_relative_path: \"{}\"\n---\n\n# {title}\n\n",
-                book_path
-                    .as_str()
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-            )
-        } else {
-            format!("# {title}\n\n")
-        };
+        let directory = Self::book_notes_directory(root, book_relative_path)?;
+        let path = directory.join(format!("{}-{suffix}.md", Self::safe_filename(title)));
+        let body = format!(
+            "---\nbook_relative_path: \"{}\"\n---\n\n# {title}\n\n",
+            book_relative_path
+                .as_str()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+        );
         Self::write_new(&path, &body)?;
         let projection = Self::projection(root, &path, &body)?;
         Ok((projection, body))
@@ -236,8 +274,25 @@ impl MarkdownNotes for MarkdownNotesStore {
         body: &str,
     ) -> Result<NoteProjection, NotesError> {
         let path = self.resolve(root, relative_path)?;
-        Self::replace_atomically(&path, body)?;
-        Self::projection(root, &path, body)
+        let existing = fs::read_to_string(&path).map_err(|_| NotesError::ReadFailed)?;
+        let existing_book = parse_book_relative_path(&existing)?;
+        let body = if frontmatter_block(body).is_some() {
+            let incoming_book = parse_book_relative_path(body)?;
+            if incoming_book != existing_book {
+                return Err(NotesError::BookRequired);
+            }
+            body.to_owned()
+        } else {
+            let frontmatter = frontmatter_block(&existing).ok_or(NotesError::BookRequired)?;
+            format!("{frontmatter}\n{}", body.trim_start())
+        };
+        Self::replace_atomically(&path, &body)?;
+        Self::projection(root, &path, &body)
+    }
+
+    fn delete(&self, root: &Path, relative_path: &RelativePath) -> Result<(), NotesError> {
+        let path = self.resolve(root, relative_path)?;
+        fs::remove_file(path).map_err(|_| NotesError::DeleteFailed)
     }
 
     fn resolve(&self, root: &Path, relative_path: &RelativePath) -> Result<PathBuf, NotesError> {
@@ -268,6 +323,29 @@ fn parse_frontmatter_value(body: &str, key: &str) -> Option<String> {
             && candidate.trim() == key
         {
             return Some(value.trim().trim_matches(['"', '\'']).to_owned());
+        }
+    }
+    None
+}
+
+fn parse_book_relative_path(body: &str) -> Result<RelativePath, NotesError> {
+    let value =
+        parse_frontmatter_value(body, "book_relative_path").ok_or(NotesError::BookRequired)?;
+    RelativePath::new(value).map_err(|_| NotesError::InvalidNotePath)
+}
+
+fn frontmatter_block(body: &str) -> Option<&str> {
+    let mut offset = 0;
+    let mut lines = body.split_inclusive('\n');
+    let first = lines.next()?;
+    if first.trim() != "---" {
+        return None;
+    }
+    offset += first.len();
+    for line in lines {
+        offset += line.len();
+        if line.trim() == "---" {
+            return Some(&body[..offset]);
         }
     }
     None
@@ -351,7 +429,7 @@ mod tests {
         let root = TempDir::new().unwrap();
         let store = MarkdownNotesStore::new();
         let book = RelativePath::new("日本語/本.pdf").unwrap();
-        let (created, _) = store.create(root.path(), "読書メモ", Some(&book)).unwrap();
+        let (created, _) = store.create(root.path(), "読書メモ", &book).unwrap();
         let updated = "---\nbook_relative_path: \"日本語/本.pdf\"\n---\n\n# 読書メモ\n\n## 要点\n#学習 [[別のノート]] [Link](other.md)\n";
 
         let projection = store
@@ -359,13 +437,41 @@ mod tests {
             .unwrap();
 
         assert_eq!(projection.title, "読書メモ");
-        assert_eq!(projection.book_relative_path, Some(book));
+        assert_eq!(projection.book_relative_path, book);
         assert_eq!(projection.headings.len(), 2);
         assert_eq!(projection.tags, ["学習"]);
         assert_eq!(projection.links.len(), 2);
         assert_eq!(
             store.read(root.path(), &created.relative_path).unwrap(),
             updated
+        );
+
+        store.delete(root.path(), &created.relative_path).unwrap();
+        assert!(!root.path().join(created.relative_path.as_str()).exists());
+    }
+
+    #[test]
+    fn creates_notes_inside_a_book_scoped_directory_and_preserves_book_link_on_save() {
+        let root = TempDir::new().unwrap();
+        let store = MarkdownNotesStore::new();
+        let book = RelativePath::new("Shelf/Book.pdf").unwrap();
+        let (created, _) = store.create(root.path(), "Reading note", &book).unwrap();
+
+        assert!(
+            created
+                .relative_path
+                .as_str()
+                .starts_with("Shelf/Book.pdf/")
+        );
+        assert!(root.path().join("Shelf/Book.pdf").is_dir());
+
+        let result = store.save(root.path(), &created.relative_path, "# Updated\n");
+        assert!(result.is_ok());
+        assert!(
+            store
+                .read(root.path(), &created.relative_path)
+                .unwrap()
+                .contains("book_relative_path: \"Shelf/Book.pdf\"")
         );
     }
 }

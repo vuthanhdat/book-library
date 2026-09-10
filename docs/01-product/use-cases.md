@@ -22,7 +22,7 @@ Feature IDs, status, and milestone assignment are authoritative in the [feature 
 | Recover a missing source | `LIB-016`, `LIB-017` | Open the nearest safe parent or explicitly relink a matching source inside the configured library without modifying files. | [`ADR-011`](../adr/ADR-011-missing-source-recovery-and-m4-search.md) |
 | Manage book details | `LIB-018` | Set book-level reading status and tags, navigate linked Markdown notes, and explicitly retry a cloud-backed cover. | [`ADR-012`](../adr/ADR-012-book-detail-and-explicit-cover-retry.md) |
 | Configure notes | `NOTE-001` | Select and validate the root that owns canonical Markdown notes. | [`05-notes/notes.md`](../05-notes/notes.md) |
-| Create, edit, and associate notes | `NOTE-002`–`NOTE-005` | Maintain portable Markdown linked to books or reading locations with rebuildable projections. | [`05-notes/notes.md`](../05-notes/notes.md) |
+| Create, edit, associate, and delete notes | `NOTE-002`–`NOTE-005` | Maintain portable Markdown linked to exactly one book in a book-scoped notes folder with rebuildable projections, including explicit note deletion. | [`05-notes/notes.md`](../05-notes/notes.md) |
 | Use notes externally | `NOTE-006` | Open notes or their folder in Obsidian or a normal editor without conversion. | [`05-notes/obsidian.md`](../05-notes/obsidian.md) |
 | Navigate note relationships | `NOTE-007`, `NOTE-008` | View backlinks and reconcile changes made by external editors. | [`05-notes/`](../05-notes/) |
 | Search local knowledge | `SEARCH-001`–`SEARCH-007` | Search rebuildable projections of books, notes, tags, and supported extracted text. | [`06-search/`](../06-search/) |

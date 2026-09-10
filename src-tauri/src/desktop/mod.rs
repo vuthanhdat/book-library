@@ -11,16 +11,17 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     application::{
-        AiDraft, ApplicationError, BookDetailError, BookDetailRecord, BookMetadataError,
-        BookRelocationError, CancellationToken, ConfigureLibrary, DictionaryEntry,
-        DictionaryImportSummary, DictionaryLookup, ForceBookCover, GetApplicationStatus,
-        GetBookDetail, JapaneseToken, LearningDraft, LibraryError, LibraryRepository, NoteDetail,
-        NoteListItem, NotesError, NotesRefreshSummary, NotesRepository, NotesWorkspace, OcrBlock,
-        OcrPageRecord, OpenBookLocation, ReconcileCatalog, RelinkMissingBook, RepairBookCovers,
-        ScanProgress, ScanReason, SearchDiagnostics, SearchError, SearchLibrary,
-        SearchRebuildSummary, SearchRepository, SearchResultItem, SourceLocationError, StudyError,
-        StudyModule, StudyReaderPage, StudyWorkspace, ThumbnailProgressStage, TrustedModule,
-        UpdateBookDetail, UpdateBookDisplayTitle,
+        AddTagToBooks, AiDraft, ApplicationError, BookDetailError, BookDetailRecord,
+        BookMetadataError, BookRelocationError, CancellationToken, ConfigureLibrary,
+        DictionaryEntry, DictionaryImportSummary, DictionaryLookup, ForceBookCover,
+        GetApplicationStatus, GetBookDetail, JapaneseToken, LearningDraft, LibraryError,
+        LibraryRepository, NoteDetail, NoteListItem, NotesError, NotesRefreshSummary,
+        NotesRepository, NotesWorkspace, OcrBlock, OcrPageRecord, OpenBookLocation,
+        ReconcileCatalog, RelinkMissingBook, RepairBookCovers, ScanProgress, ScanReason,
+        SearchDiagnostics, SearchError, SearchLibrary, SearchRebuildSummary, SearchRepository,
+        SearchResultItem, SourceLocationError, StudyError, StudyModule, StudyReaderPage,
+        StudyWorkspace, ThumbnailProgressStage, TrustedModule, UpdateBookDetail,
+        UpdateBookDisplayTitle,
     },
     domain::{BookId, NoteId},
     infrastructure::{
@@ -128,6 +129,14 @@ struct BookResponse {
     modified_at_ms: Option<i64>,
     thumbnail_data_url: Option<String>,
     thumbnail_status: String,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BookTagUpdateResponse {
+    book_id: String,
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -174,8 +183,8 @@ struct NoteListResponse {
     title: String,
     relative_path: String,
     status: String,
-    book_id: Option<String>,
-    book_title: Option<String>,
+    book_id: String,
+    book_title: String,
     modified_at_ms: Option<i64>,
 }
 
@@ -194,8 +203,8 @@ struct NoteDetailResponse {
     title: String,
     relative_path: String,
     body: String,
-    book_id: Option<String>,
-    book_title: Option<String>,
+    book_id: String,
+    book_title: String,
     backlinks: Vec<NoteBacklinkResponse>,
 }
 
@@ -581,6 +590,10 @@ impl From<NotesError> for DesktopError {
                 code: "book_not_found",
                 message: "The selected book is no longer in the catalog.",
             },
+            NotesError::BookRequired => Self {
+                code: "note_book_required",
+                message: "Every note must be linked to a book.",
+            },
             NotesError::ReadFailed => Self {
                 code: "note_read_failed",
                 message: "The Markdown note could not be read.",
@@ -588,6 +601,10 @@ impl From<NotesError> for DesktopError {
             NotesError::WriteFailed => Self {
                 code: "note_write_failed",
                 message: "The Markdown note could not be saved.",
+            },
+            NotesError::DeleteFailed => Self {
+                code: "note_delete_failed",
+                message: "The Markdown note could not be deleted.",
             },
             NotesError::RepositoryFailed => Self {
                 code: "notes_projection_failed",
@@ -1196,6 +1213,7 @@ fn list_library_books(backend: State<'_, BackendState>) -> Result<Vec<BookRespon
                 modified_at_ms: book.modified_at_ms,
                 thumbnail_data_url,
                 thumbnail_status: book.thumbnail_status,
+                tags: book.tags,
             }
         })
         .collect())
@@ -1258,6 +1276,31 @@ fn update_book_detail(
         .execute(book_id)
         .map_err(DesktopError::from)?;
     Ok(book_detail_response(detail, backend.database.as_ref()))
+}
+
+#[tauri::command]
+fn add_tag_to_books(
+    book_ids: Vec<String>,
+    tag: String,
+    backend: State<'_, BackendState>,
+) -> Result<Vec<BookTagUpdateResponse>, DesktopError> {
+    let book_ids = book_ids
+        .iter()
+        .map(|book_id| {
+            BookId::parse(book_id).map_err(|_| DesktopError::from(BookDetailError::BookNotFound))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let updates = AddTagToBooks::new(backend.database.as_ref())
+        .execute(book_ids, tag)
+        .map_err(DesktopError::from)?;
+    queue_search_refresh(&backend);
+    Ok(updates
+        .into_iter()
+        .map(|update| BookTagUpdateResponse {
+            book_id: update.book_id,
+            tags: update.tags,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -1380,14 +1423,11 @@ fn list_notes(backend: State<'_, BackendState>) -> Result<Vec<NoteListResponse>,
 #[tauri::command]
 fn create_note(
     title: String,
-    book_id: Option<String>,
+    book_id: String,
     backend: State<'_, BackendState>,
 ) -> Result<NoteDetailResponse, DesktopError> {
-    let book_id = book_id
-        .as_deref()
-        .map(BookId::parse)
-        .transpose()
-        .map_err(|_| DesktopError::from(NotesError::BookNotFound))?;
+    let book_id =
+        BookId::parse(&book_id).map_err(|_| DesktopError::from(NotesError::BookNotFound))?;
     let detail = NotesWorkspace::new(
         backend.database.as_ref(),
         backend.markdown_notes.as_ref(),
@@ -1433,6 +1473,21 @@ fn save_note(
     .map_err(DesktopError::from)?;
     queue_search_refresh(&backend);
     Ok(note_detail_response(detail))
+}
+
+#[tauri::command]
+fn delete_note(note_id: String, backend: State<'_, BackendState>) -> Result<(), DesktopError> {
+    let note_id =
+        NoteId::parse(&note_id).map_err(|_| DesktopError::from(NotesError::NoteNotFound))?;
+    NotesWorkspace::new(
+        backend.database.as_ref(),
+        backend.markdown_notes.as_ref(),
+        backend.file_manager.as_ref(),
+    )
+    .delete(note_id)
+    .map_err(DesktopError::from)?;
+    queue_search_refresh(&backend);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1835,6 +1890,7 @@ pub(crate) fn run() {
             update_book_display_title,
             get_book_detail,
             update_book_detail,
+            add_tag_to_books,
             force_book_cover,
             relink_missing_book,
             get_notes_configuration,
@@ -1844,6 +1900,7 @@ pub(crate) fn run() {
             create_note,
             read_note,
             save_note,
+            delete_note,
             open_note_external,
             open_notes_root,
             search_library,

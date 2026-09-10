@@ -4,7 +4,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     io::Read,
     path::Path,
-    sync::mpsc,
+    sync::mpsc::{self, RecvTimeoutError},
     thread,
     time::Duration,
     time::UNIX_EPOCH,
@@ -21,6 +21,7 @@ use crate::{
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 const DIRECTORY_BATCH_SIZE: usize = 8;
 const DIRECTORY_READ_TIMEOUT: Duration = Duration::from_millis(500);
+const DIRECTORY_READ_RETRY_TIMEOUT: Duration = Duration::from_secs(5);
 const PDF_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
 
 fn pdf_probe_timeout(_reason: ScanReason) -> Duration {
@@ -225,10 +226,26 @@ impl FilesystemScanner {
             });
             let _ = sender.send(result);
         });
-        match receiver.recv_timeout(DIRECTORY_READ_TIMEOUT) {
+        Self::receive_directory_result(
+            receiver,
+            DIRECTORY_READ_TIMEOUT,
+            DIRECTORY_READ_RETRY_TIMEOUT,
+        )
+    }
+
+    fn receive_directory_result(
+        receiver: mpsc::Receiver<Result<Vec<EntryInfo>, std::io::Error>>,
+        initial_timeout: Duration,
+        retry_timeout: Duration,
+    ) -> Result<Vec<EntryInfo>, &'static str> {
+        match receiver.recv_timeout(initial_timeout) {
             Ok(Ok(entries)) => Ok(entries),
             Ok(Err(_)) => Err("unreadable_directory"),
-            Err(_) => Err("directory_unavailable"),
+            Err(RecvTimeoutError::Disconnected) => Err("directory_unavailable"),
+            Err(RecvTimeoutError::Timeout) => receiver
+                .recv_timeout(retry_timeout)
+                .map_err(|_| "directory_unavailable")?
+                .map_err(|_| "unreadable_directory"),
         }
     }
 
@@ -696,6 +713,53 @@ mod tests {
             result.books[0].relative_path.as_str(),
             format!("{expected_title}/pages")
         );
+    }
+
+    #[test]
+    fn discovers_kindlecapture_pages_alongside_capture_metadata() {
+        let root = TempDir::new().unwrap();
+        let capture = root.path().join("KindleCapture-20260910-101530");
+        let pages = capture.join("pages");
+        fs::create_dir_all(&pages).unwrap();
+        fs::write(capture.join("capture.log"), b"capture log").unwrap();
+        fs::write(capture.join("session.json"), b"{}").unwrap();
+        fs::write(pages.join("page-0002.png"), b"image").unwrap();
+        fs::write(pages.join("page-0001.png"), b"image").unwrap();
+
+        let mut progress = |_| {};
+        let result = FilesystemScanner::new()
+            .scan(
+                root.path(),
+                ScanReason::Manual,
+                &CancellationToken::default(),
+                &mut progress,
+            )
+            .unwrap();
+
+        assert_eq!(result.books.len(), 1);
+        assert_eq!(result.books[0].title, "KindleCapture-20260910-101530");
+        assert_eq!(
+            result.books[0].relative_path.as_str(),
+            "KindleCapture-20260910-101530/pages"
+        );
+        assert_eq!(result.books[0].page_count, Some(2));
+    }
+
+    #[test]
+    fn retries_a_slow_directory_read_before_reporting_it_unavailable() {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(25));
+            sender.send(Ok(Vec::new())).unwrap();
+        });
+
+        let result = FilesystemScanner::receive_directory_result(
+            receiver,
+            Duration::from_millis(1),
+            Duration::from_millis(100),
+        );
+
+        assert!(result.is_ok());
     }
 
     #[test]

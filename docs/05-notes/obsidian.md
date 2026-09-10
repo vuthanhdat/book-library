@@ -41,9 +41,9 @@ flowchart TD
 
 # Data Model
 
-Suggested frontmatter for book notes:
+Required frontmatter for Book Library-managed book notes:
 
-- `book_relative_path`: relative path to the book file or image folder.
+- `book_relative_path`: relative path to the book file or image folder; required for managed notes.
 - `book_id`: optional app ID, not required for portability.
 - `title`: note title when not derived from heading.
 - `tags`: Obsidian-compatible tag list.
@@ -59,6 +59,6 @@ Suggested frontmatter for book notes:
 
 # Open Questions
 
-- Should `book_id` appear in frontmatter if it is app-specific?
+- Should `book_id` appear in frontmatter if it is app-specific? No; the portable book relative path remains the only required association.
 - Should Book Library create an Obsidian vault by default or just a compatible folder?
 - Should wiki links resolve by note title, file stem, or full relative path?

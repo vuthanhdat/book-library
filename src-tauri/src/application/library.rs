@@ -136,6 +136,7 @@ pub(crate) struct BookListItem {
     pub(crate) modified_at_ms: Option<i64>,
     pub(crate) thumbnail_cache_path: Option<String>,
     pub(crate) thumbnail_status: String,
+    pub(crate) tags: Vec<String>,
 }
 
 pub(crate) trait LibraryRepository {

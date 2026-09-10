@@ -51,6 +51,12 @@ pub(crate) struct BookDetailRecord {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct BookTagUpdate {
+    pub(crate) book_id: String,
+    pub(crate) tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct BookThumbnailTarget {
     pub(crate) root: PathBuf,
     pub(crate) book: DiscoveredBook,
@@ -64,6 +70,11 @@ pub(crate) trait BookDetailRepository {
         reading_status: &str,
         tags: &[String],
     ) -> Result<bool, BookDetailError>;
+    fn add_tag_to_books(
+        &self,
+        book_ids: &[BookId],
+        tag: &str,
+    ) -> Result<Vec<BookTagUpdate>, BookDetailError>;
     fn book_thumbnail_target(
         &self,
         book_id: BookId,
@@ -126,6 +137,34 @@ impl<'a, Repository: BookDetailRepository> UpdateBookDetail<'a, Repository> {
             return Err(BookDetailError::BookNotFound);
         }
         Ok(())
+    }
+}
+
+pub(crate) struct AddTagToBooks<'a, Repository> {
+    repository: &'a Repository,
+}
+
+impl<'a, Repository: BookDetailRepository> AddTagToBooks<'a, Repository> {
+    pub(crate) fn new(repository: &'a Repository) -> Self {
+        Self { repository }
+    }
+
+    pub(crate) fn execute(
+        &self,
+        book_ids: Vec<BookId>,
+        tag: String,
+    ) -> Result<Vec<BookTagUpdate>, BookDetailError> {
+        let tag = tag.trim().trim_start_matches('#').to_owned();
+        if tag.is_empty() || tag.chars().count() > 64 || tag.chars().any(char::is_whitespace) {
+            return Err(BookDetailError::InvalidTags);
+        }
+        let mut unique_book_ids = Vec::with_capacity(book_ids.len());
+        for book_id in book_ids {
+            if !unique_book_ids.contains(&book_id) {
+                unique_book_ids.push(book_id);
+            }
+        }
+        self.repository.add_tag_to_books(&unique_book_ids, &tag)
     }
 }
 
